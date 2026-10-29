@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>MultiPad</title>
   <meta name="description" content="Editor de código con pestañas, paneles, varias ventanas y vista previa. Code editor with tabs, panes, multiple windows and live preview.">
-  <meta name="theme-color" content="#16191d">
+  <meta name="theme-color" content="#0b1020">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -15,8 +15,25 @@
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="mpY" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd23f"/><stop offset="1" stop-color="#ff9214"/></linearGradient>
+      <linearGradient id="mpP" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8f63ff"/><stop offset="1" stop-color="#5a2df5"/></linearGradient>
+      <linearGradient id="mpB" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#36c8ff"/><stop offset="1" stop-color="#3d3cff"/></linearGradient>
+      <symbol id="mpLogo" viewBox="0 0 64 64">
+        <path d="M33 6.5 L54 12.6 Q59 14 59 19.5 L59 44 Q59 49 54 49.5 L50 50 L50 17 Q50 13.5 46 12.4 L33 8.8 Z" fill="url(#mpY)" stroke="none"/>
+        <path d="M24 11 L45 17.2 Q50 18.7 50 24 L50 49 Q50 52 46.5 54 L42 56.5 L42 22.5 Q42 19 38 17.8 L24 13.6 Z" fill="url(#mpP)" stroke="var(--logo-gap)" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M10 17 Q10 12.5 14.5 13.8 L35.5 20 Q41 21.6 41 27 L41 52 Q41 58 35.5 56.4 L14.5 50.2 Q10 48.8 10 44 Z" fill="url(#mpB)" stroke="var(--logo-gap)" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M22.5 29 L17.5 35 L22.5 41 M29 29 L34 35 L29 41" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+    </defs>
+  </svg>
   <div id="app">
     <header id="topbar">
+      <div class="brand" title="Multipad">
+        <svg class="logo"><use href="#mpLogo"/></svg>
+        <span class="wordmark">Multi<b>pad</b></span>
+      </div>
       <button class="icon-btn" id="btnSidebar" data-i18n-title="top.sidebar" data-i18n-aria-label="top.sidebar">
         <svg viewBox="0 0 24 24"><path d="M3 5h18v14H3z M9 5v14" /></svg>
       </button>
@@ -70,6 +87,25 @@
     </header>
 
     <div id="main">
+      <nav id="activitybar">
+        <button class="act-btn" id="actFiles" data-i18n-title="top.sidebar">
+          <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
+          <span data-i18n="act.files"></span>
+        </button>
+        <button class="act-btn" id="actSearch" data-i18n-title="cmd.find">
+          <svg viewBox="0 0 24 24"><path d="M11 4a7 7 0 1 1 0 14a7 7 0 0 1 0-14z M16.5 16.5L21 21" /></svg>
+          <span data-i18n="act.search"></span>
+        </button>
+        <button class="act-btn" id="actRun" data-i18n-title="cmd.runPanel">
+          <svg viewBox="0 0 24 24"><path d="M3 4h18v16H3z M13 4v16 M6.5 9.5l2 2-2 2" /></svg>
+          <span data-i18n="act.run"></span>
+        </button>
+        <span class="grow"></span>
+        <button class="act-btn" id="actSettings" data-i18n-title="act.settings">
+          <svg viewBox="0 0 24 24"><path d="M12 9a3 3 0 1 1 0 6a3 3 0 0 1 0-6z M19.4 13.5l1.6 1.2-2 3.4-1.9-.7a7 7 0 0 1-1.7 1l-.3 2h-4l-.3-2a7 7 0 0 1-1.7-1l-1.9.7-2-3.4 1.6-1.2a7 7 0 0 1 0-2l-1.6-1.2 2-3.4 1.9.7a7 7 0 0 1 1.7-1l.3-2h4l.3 2a7 7 0 0 1 1.7 1l1.9-.7 2 3.4-1.6 1.2a7 7 0 0 1 0 2z" /></svg>
+          <span data-i18n="act.settings"></span>
+        </button>
+      </nav>
       <aside id="sidebar" hidden>
         <section class="side-section">
           <div class="side-head">
@@ -91,22 +127,12 @@
       <div id="runDivider" class="run-divider" hidden></div>
       <aside id="runPanel" hidden>
         <div class="run-head">
-          <div class="run-tabs" role="tablist">
-            <button data-runtab="preview" data-i18n="run.preview"></button>
-            <button data-runtab="console"><span data-i18n="run.console"></span><span id="runErrCount" class="err-count" hidden></span></button>
-          </div>
-          <span id="runSource" class="run-source"></span>
+          <span class="run-title" id="runTitle"></span>
           <span class="grow"></span>
           <label class="run-auto" data-i18n-title="cmd.runAuto"><input type="checkbox" id="runAuto"> <span data-i18n="run.auto"></span></label>
           <button class="icon-btn small text" id="runStdinBtn" data-i18n-title="run.stdin">stdin</button>
-          <button class="icon-btn small" id="runAgain" data-i18n-title="run.again" data-i18n-aria-label="run.again">
-            <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7 M20 4v5h-5" /></svg>
-          </button>
           <button class="icon-btn small" id="runStop" hidden data-i18n-title="run.stop" data-i18n-aria-label="run.stop">
             <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z" /></svg>
-          </button>
-          <button class="icon-btn small" id="runPopout" data-i18n-title="run.popout" data-i18n-aria-label="run.popout">
-            <svg viewBox="0 0 24 24"><path d="M14 4h6v6 M20 4l-9 9 M18 14v6H4V6h6" /></svg>
           </button>
           <button class="icon-btn small" id="runClose" data-i18n-title="run.close" data-i18n-aria-label="run.close">
             <svg viewBox="0 0 24 24"><path d="M6 6l12 12 M18 6L6 18" /></svg>
@@ -114,8 +140,37 @@
         </div>
         <textarea id="runStdin" hidden spellcheck="false" data-i18n-placeholder="run.stdinPlaceholder"></textarea>
         <div class="run-body">
-          <iframe id="runFrame" sandbox="allow-scripts allow-modals allow-forms allow-popups" title="Preview"></iframe>
-          <div id="runConsole" class="run-console" hidden></div>
+          <div class="preview-wrap" id="previewWrap">
+            <div class="browser-bar">
+              <button class="icon-btn small" id="runAgain" data-i18n-title="run.again" data-i18n-aria-label="run.again">
+                <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7 M20 4v5h-5" /></svg>
+              </button>
+              <div class="address">
+                <svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3 M5 11h14v10H5z" /></svg>
+                <span>multipad://</span><span id="runSource"></span>
+              </div>
+              <button class="icon-btn small" id="runPopout" data-i18n-title="run.popout" data-i18n-aria-label="run.popout">
+                <svg viewBox="0 0 24 24"><path d="M14 4h6v6 M20 4l-9 9 M18 14v6H4V6h6" /></svg>
+              </button>
+            </div>
+            <div class="frame-wrap"><iframe id="runFrame" sandbox="allow-scripts allow-modals allow-forms allow-popups" title="Preview"></iframe></div>
+          </div>
+          <div class="term-divider" id="termDivider"></div>
+          <section class="term" id="term">
+            <div class="term-head" id="termHead">
+              <svg viewBox="0 0 24 24"><path d="M3 5h18v14H3z M7 10l3 2-3 2 M12 15h5" /></svg>
+              <span data-i18n="run.console"></span>
+              <span id="runErrCount" class="err-count" hidden></span>
+              <span class="grow"></span>
+              <button class="icon-btn small" id="termClear" data-i18n-title="run.clear" data-i18n-aria-label="run.clear">
+                <svg viewBox="0 0 24 24"><path d="M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13 M10 11v6 M14 11v6" /></svg>
+              </button>
+              <button class="icon-btn small" id="termToggle" data-i18n-title="run.toggleTerm" data-i18n-aria-label="run.toggleTerm">
+                <svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6" /></svg>
+              </button>
+            </div>
+            <div id="runConsole" class="run-console"></div>
+          </section>
         </div>
       </aside>
     </div>

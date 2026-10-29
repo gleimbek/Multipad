@@ -1,4 +1,4 @@
-// MultiPad: editor de código con pestañas, paneles, varias ventanas sincronizadas y panel de ejecución.
+// Multipad: editor de código con pestañas, paneles, varias ventanas sincronizadas y panel de ejecución.
 import * as CM from '../vendor/codemirror.js';
 import { db } from './db.js';
 import { LANGS, langById, langExtension, detectLang } from './langs.js';
@@ -12,6 +12,22 @@ const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platfor
 const UNTITLED_RE = /^(nuevo|new) \d+$/;
 
 const langLabel = (id) => (id === 'text' ? t('lang.text') : langById(id).label);
+
+// Insignia de color por tipo de archivo (pestañas, lista de documentos y carpetas).
+const BADGES = {
+  html: ['<>', '#e8562a'], css: ['#', '#2f7bff'], javascript: ['JS', '#f4c430', '#1b1b1b'], jsx: ['JSX', '#f4c430', '#1b1b1b'],
+  typescript: ['TS', '#3178c6'], tsx: ['TSX', '#3178c6'], json: ['{}', '#8a63ff'], php: ['php', '#7a86b8'],
+  python: ['Py', '#3572a5'], java: ['J', '#e76f00'], kotlin: ['K', '#a97bff'], csharp: ['C#', '#68217a'],
+  cpp: ['C', '#00599c'], rust: ['Rs', '#b7410e'], go: ['Go', '#00add8'], ruby: ['Rb', '#cc342d'], sql: ['SQL', '#0f8b8d'],
+  markdown: ['M', '#4a9eff'], xml: ['<>', '#f08d24'], yaml: ['Y', '#cb171e'], shell: ['$', '#4eaa25'], powershell: ['PS', '#2671be'],
+  text: ['≡', '#5b6680'],
+};
+function fileBadge(lang, name = '') {
+  let [label, bg, fg = '#fff'] = BADGES[lang] || BADGES.text;
+  if (lang === 'cpp' && /\.(cpp|hpp|cc|cxx)$/i.test(name)) label = 'C++';
+  if (lang === 'xml' && /\.svg$/i.test(name)) { label = 'SVG'; bg = '#ff9a00'; }
+  return el('span', { class: 'fi' + (label.length > 2 ? ' wide' : ''), style: `--fi-bg:${bg};--fi-fg:${fg}`, 'aria-hidden': 'true', text: label });
+}
 
 /* ------------------------------------------------------------------ menús */
 
@@ -111,7 +127,7 @@ function applySettings() {
   const theme = resolvedTheme();
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.setProperty('--editor-font', settings.fontSize + 'px');
-  $('meta[name="theme-color"]').setAttribute('content', theme === 'dark' ? '#16191d' : '#e4e7ea');
+  $('meta[name="theme-color"]').setAttribute('content', theme === 'dark' ? '#0b1020' : '#f7f8fc');
   const langChanged = lastAppliedLang !== settings.uiLang;
   if (langChanged) {
     setLang(settings.uiLang);
@@ -482,8 +498,15 @@ function paneEl(pane) {
     showMenu(paneMenuItems(paneId), { x: r.right - 240, y: r.bottom + 4 });
   });
   const editors = el('div', { class: 'editors' });
+  const logo = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  logo.setAttribute('class', 'empty-logo');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', '#mpLogo');
+  logo.append(use);
   const empty = el('div', { class: 'empty-pane' },
-    el('div', { 'data-i18n': 'pane.empty', text: t('pane.empty') }),
+    logo,
+    el('div', { class: 'empty-title' }, 'Multi', el('b', { text: 'pad' })),
+    el('div', { class: 'empty-tag', 'data-i18n': 'pane.tagline', text: t('pane.tagline') }),
     el('div', { class: 'row' },
       el('button', { class: 'btn primary', 'data-i18n': 'cmd.new', text: t('cmd.new'), onclick: () => { setFocus(paneId); cmds.new(); } }),
       el('button', { class: 'btn', 'data-i18n': 'cmd.openShort', text: t('cmd.openShort'), onclick: () => { setFocus(paneId); cmds.open(); } }),
@@ -622,7 +645,7 @@ function makeTab(paneId, d) {
     draggable: 'true',
     title: `${d.rec.name} · ${langLabel(d.rec.lang)}${d.rec.handle ? '' : ' · ' + t('tab.noFile')}`,
     dataset: { doc: id },
-  }, el('span', { class: 'label', text: d.rec.name }), close);
+  }, fileBadge(d.rec.lang, d.rec.name), el('span', { class: 'label', text: d.rec.name }), close);
 
   tab.addEventListener('click', () => activateTab(paneId, id));
   tab.addEventListener('auxclick', (e) => { if (e.button === 1) { e.preventDefault(); closeTab(paneId, id); } });
@@ -1181,7 +1204,7 @@ async function renderDir(dirHandle, container, depth, key) {
       container.append(node, box);
       if (expanded.has(k)) renderDir(h, box, depth + 1, k);
     } else {
-      const node = el('div', { class: 'tree-item file', style: pad, title: name }, el('span', { class: 'caret' }), el('span', { text: name }));
+      const node = el('div', { class: 'tree-item file', style: pad, title: name }, el('span', { class: 'caret' }), fileBadge(detectLang(name), name), el('span', { text: name }));
       node.addEventListener('click', async () => {
         await openHandle(h);
         if (window.innerWidth < 700) toggleSidebar(false);
@@ -1209,8 +1232,9 @@ const refreshDocList = debounce(async () => {
     const del = el('button', { class: 'del', title: t('docs.remove'), 'aria-label': t('docs.remove') }, '×');
     del.addEventListener('click', (e) => { e.stopPropagation(); deleteFromWorkspace(r.id, r.name, dirty); });
     const item = el('div', { class: 'doc-item', title: r.name + (r.handle ? '' : ' · ' + t('docs.onlyWorkspace')) },
-      el('span', { class: 'open-dot' + (isOpenAnywhere(r.id) ? '' : ' off') }),
+      fileBadge(r.lang, r.name),
       el('span', { class: 'name' }, dirty ? el('span', { class: 'dirty-mark', text: '● ' }) : null, r.name),
+      el('span', { class: 'open-dot' + (isOpenAnywhere(r.id) ? '' : ' off') }),
       del);
     item.addEventListener('click', async () => {
       await showDoc(r.id);
@@ -1246,6 +1270,7 @@ function toggleSidebar(force) {
   saveLayout();
   if (show) { renderTree(); refreshDocList(); }
   for (const v of allViews()) v.requestMeasure();
+  syncActivity();
 }
 
 /* ------------------------------------------------------------------ varias ventanas y pantallas */
@@ -1563,7 +1588,7 @@ function showShortcuts() {
 }
 
 function showAbout() {
-  infoModal('MultiPad', el('p', { text: t('about.text') }), el('p', { text: t('about.credits') }));
+  infoModal('Multipad', el('p', { text: t('about.text') }), el('p', { text: t('about.credits') }));
 }
 
 const cmds = {
@@ -1806,6 +1831,35 @@ for (const btn of document.querySelectorAll('[data-cmd]')) {
   btn.addEventListener('click', () => cmds[btn.dataset.cmd]?.());
 }
 $('#btnSidebar').addEventListener('click', () => cmds.sidebar());
+$('#actFiles').addEventListener('click', () => cmds.sidebar());
+$('#actSearch').addEventListener('click', () => (activeView() ? cmds.find() : toast(t('lang.needDoc'))));
+$('#actRun').addEventListener('click', () => cmds.runPanel());
+$('#actSettings').addEventListener('click', () => {
+  const r = $('#actSettings').getBoundingClientRect();
+  showMenu([
+    { title: t('set.title') },
+    { label: t('cmd.themeAuto'), checked: settings.theme === 'auto', action: () => cmds.theme('auto') },
+    { label: t('cmd.themeDark'), checked: settings.theme === 'dark', action: () => cmds.theme('dark') },
+    { label: t('cmd.themeLight'), checked: settings.theme === 'light', action: () => cmds.theme('light') },
+    'sep',
+    { label: 'Español', checked: getLang() === 'es', action: () => setUiLang('es') },
+    { label: 'English', checked: getLang() === 'en', action: () => setUiLang('en') },
+    'sep',
+    { label: t('cmd.zoomIn'), kbd: 'Ctrl+=', action: cmds.zoomIn },
+    { label: t('cmd.zoomOut'), kbd: 'Ctrl+-', action: cmds.zoomOut },
+    { label: t('cmd.wrap'), kbd: 'Alt+Z', checked: settings.wrap, action: cmds.wrap },
+    { label: t('cmd.whitespace'), checked: settings.whitespace, action: cmds.whitespace },
+    { label: t('cmd.autocomplete'), checked: settings.autocomplete, action: cmds.autocomplete },
+    { label: t('cmd.tabSize'), action: cmds.tabSize },
+    'sep',
+    { label: t('cmd.server'), action: cmds.server },
+  ], { x: r.right + 6, y: r.bottom - 360 });
+});
+
+function syncActivity() {
+  $('#actFiles').classList.toggle('on', !$('#sidebar').hidden);
+  $('#actRun').classList.toggle('on', !!runner?.isOpen());
+}
 $('#btnUiLang').addEventListener('click', () => cmds.uiLang());
 $('#langBadge').addEventListener('click', () => cmds.language());
 $('#winLabel').addEventListener('click', () => cmds.renameWindow());
@@ -1894,7 +1948,7 @@ $('#mobileKeys').addEventListener('click', (e) => {
 
 function updateTitle() {
   const d = activeDoc();
-  document.title = d ? `${d.dirty ? '● ' : ''}${d.rec.name} — MultiPad · ${winName()}` : `MultiPad · ${winName()}`;
+  document.title = d ? `${d.dirty ? '● ' : ''}${d.rec.name} — Multipad · ${winName()}` : `Multipad · ${winName()}`;
 }
 
 function updateStatus() {
@@ -1979,7 +2033,7 @@ async function start() {
 
   try { layout = JSON.parse(localStorage.getItem(layoutKey()) || 'null'); } catch { layout = null; }
   if (!layout || !Array.isArray(layout.panes) || !layout.panes.length) {
-    layout = { dir: 'row', panes: [newPane()], focused: null, sidebar: false };
+    layout = { dir: 'row', panes: [newPane()], focused: null, sidebar: window.innerWidth >= 1000 };
   }
   layout.run = Object.assign({ open: false, size: 460, sizeV: 300, tab: 'preview', auto: true, stdin: false, stdinText: '' }, layout.run || {});
   // Se descartan pestañas cuyos documentos ya no existen.
@@ -2007,7 +2061,7 @@ async function start() {
     uiLang: () => getLang(),
     toast,
     openWindow: (url, name, otherScreen) => openWindowUrl(url, name, otherScreen),
-    onResize: () => { for (const v of allViews()) v.requestMeasure(); },
+    onResize: () => { for (const v of allViews()) v.requestMeasure(); syncActivity(); },
     onRunning: (on) => { $('#btnRun').classList.toggle('running', on); },
   });
 

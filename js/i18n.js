@@ -11,7 +11,7 @@ const DICT = {
     'top.otherScreen': 'Ventana en otra pantalla', 'top.run': 'Ejecutar', 'top.runTitle': 'Ejecutar o ver vista previa (F5)',
     'top.uiLang': 'Idioma de la interfaz: cambiar a inglés', 'top.winLabel': 'Nombre de esta ventana (clic para renombrar)',
 
-    'side.folders': 'Carpetas', 'side.openFolder': 'Abrir carpeta', 'side.docs': 'Documentos del espacio',
+    'act.files': 'Archivos', 'act.search': 'Buscar', 'act.run': 'Ejecutar', 'act.settings': 'Ajustes', 'set.title': 'Ajustes', 'side.folders': 'Carpetas', 'side.openFolder': 'Abrir carpeta', 'side.docs': 'Documentos del espacio',
     'folder.none': 'Ninguna carpeta abierta.', 'folder.needChrome': 'Abrir carpetas requiere Chrome o Edge de escritorio.',
     'folder.remove': 'Quitar carpeta de la lista', 'folder.noPermission': 'Sin permiso para leer la carpeta.',
     'folder.tapToAllow': 'Toca la carpeta para dar permiso', 'folder.unsupported': 'Este navegador no permite abrir carpetas completas. Usa Archivo → Abrir para elegir archivos.',
@@ -22,7 +22,7 @@ const DICT = {
 
     'pane.options': 'Opciones del panel', 'pane.empty': 'Panel vacío', 'pane.documents': 'Documentos', 'pane.title': 'Panel',
     'pane.hintTouch': 'Usa el menú ⋮ de cada pestaña para moverla aquí.', 'pane.hintMouse': 'También puedes arrastrar pestañas o archivos a este panel.',
-    'pane.closeAllTabs': 'Cerrar todas las pestañas',
+    'pane.closeAllTabs': 'Cerrar todas las pestañas', 'pane.tagline': 'Escribe. Edita. Ejecuta.',
 
     'tab.close': 'Cerrar', 'tab.closeOthers': 'Cerrar las demás', 'tab.moveOther': 'Mover al otro panel', 'tab.cloneOther': 'Clonar en el otro panel',
     'tab.sendWindow': 'Enviar a otra ventana…', 'tab.newWindow': 'Abrir en ventana nueva', 'tab.otherScreen': 'Abrir en otra pantalla',
@@ -30,7 +30,7 @@ const DICT = {
 
     'cmd.new': 'Nuevo', 'cmd.open': 'Abrir…', 'cmd.openShort': 'Abrir…', 'cmd.openFolder': 'Abrir carpeta…', 'cmd.save': 'Guardar',
     'cmd.saveAs': 'Guardar como…', 'cmd.saveAll': 'Guardar todo', 'cmd.rename': 'Renombrar…', 'cmd.closeTab': 'Cerrar pestaña',
-    'cmd.closeAll': 'Cerrar todas', 'cmd.install': 'Instalar MultiPad en este dispositivo',
+    'cmd.closeAll': 'Cerrar todas', 'cmd.install': 'Instalar Multipad en este dispositivo',
     'cmd.undo': 'Deshacer', 'cmd.redo': 'Rehacer', 'cmd.find': 'Buscar y reemplazar', 'cmd.goto': 'Ir a línea…',
     'cmd.comment': 'Comentar / descomentar', 'cmd.dupLine': 'Duplicar línea', 'cmd.delLine': 'Borrar línea', 'cmd.upper': 'MAYÚSCULAS',
     'cmd.lower': 'minúsculas', 'cmd.sortLines': 'Ordenar líneas', 'cmd.trim': 'Quitar espacios al final',
@@ -50,7 +50,7 @@ const DICT = {
     'lang.menuTitle': 'Lenguaje de {name}', 'lang.menuTitleNone': 'Sin documento activo', 'lang.whatRuns': '¿Qué lenguajes se pueden ejecutar?',
     'lang.badgeTitle': 'Lenguaje del documento (clic para cambiarlo). Ejecutar: {where}',
     'lang.tableTitle': 'Lenguajes y ejecución',
-    'lang.tableIntro': 'MultiPad elige el lenguaje por la extensión del archivo. Si no acierta, cámbialo desde el menú Lenguaje, la insignia junto a Ejecutar o la barra de estado (Alt+L).',
+    'lang.tableIntro': 'Multipad elige el lenguaje por la extensión del archivo. Si no acierta, cámbialo desde el menú Lenguaje, la insignia junto a Ejecutar o la barra de estado (Alt+L).',
     'lang.colLang': 'Lenguaje', 'lang.colExt': 'Extensiones', 'lang.colRun': 'Al pulsar Ejecutar (F5)',
     'lang.tableNote': 'La vista previa de HTML incluye los .css y .js que el HTML enlaza, si están en el espacio de trabajo con el mismo nombre. Las imágenes con ruta relativa no se ven en la vista previa; usa URLs completas.',
 
@@ -62,15 +62,15 @@ const DICT = {
     'status.pos': 'Ln {line}, Col {col}', 'status.sel': 'Sel: {n}', 'status.lines': '{n} líneas', 'status.cursors': '{n} cursores',
     'status.spaces': 'Espacios: {n}',
 
-    'run.preview': 'Vista previa', 'run.console': 'Consola', 'run.auto': 'En vivo', 'run.stdin': 'Entrada (stdin) para input(), Scanner, cin…',
+    'run.preview': 'Vista previa', 'run.console': 'Consola', 'run.output': 'Salida', 'run.clear': 'Limpiar consola', 'run.toggleTerm': 'Mostrar u ocultar la consola', 'run.auto': 'En vivo', 'run.stdin': 'Entrada (stdin) para input(), Scanner, cin…',
     'run.stdinPlaceholder': 'Escribe aquí lo que tu programa lee con input(), Scanner, cin… Una respuesta por línea.',
     'run.popout': 'Abrir la vista previa en una ventana aparte (puedes moverla a otra pantalla)', 'run.stop': 'Detener (Shift+F5)',
     'run.again': 'Ejecutar de nuevo (F5)', 'run.close': 'Cerrar panel',
-    'run.noDoc': 'No hay documento activo para ejecutar.', 'run.notRunnable': '{lang} no se ejecuta; MultiPad solo lo edita.',
+    'run.noDoc': 'No hay documento activo para ejecutar.', 'run.notRunnable': '{lang} no se ejecuta; Multipad solo lo edita.',
     'run.seeTable': 'Menú Lenguaje → "¿Qué lenguajes se pueden ejecutar?" muestra la lista completa.',
-    'run.headPreview': '▶ Vista previa: {name}', 'run.headRun': '▶ {name} · {where}', 'run.headCheck': '▶ Revisando {name}',
+    'run.headPreview': 'Vista previa: {name}', 'run.headRun': '{name} · {where}', 'run.headCheck': 'Revisando {name}',
     'run.whereBrowser': 'en el navegador', 'run.whereSqlite': 'SQLite en el navegador', 'run.whereRemote': 'servidor {host}',
-    'run.usingHost': 'Se muestra {host}, que usa {file}.', 'run.missing': 'No encontré "{file}" en el espacio de trabajo; ábrelo en MultiPad para que la vista previa lo incluya.',
+    'run.usingHost': 'Se muestra {host}, que usa {file}.', 'run.missing': 'No encontré "{file}" en el espacio de trabajo; ábrelo en Multipad para que la vista previa lo incluya.',
     'run.cssNoHost': 'Ningún HTML del espacio de trabajo enlaza {file}; se muestra una página de ejemplo con esos estilos.',
     'run.sample.h1': 'Título de ejemplo', 'run.sample.p': 'Un párrafo con un', 'run.sample.link': 'enlace', 'run.sample.item': 'Elemento',
     'run.sample.button': 'Botón', 'run.sample.input': 'Campo de texto',
@@ -119,8 +119,8 @@ const DICT = {
 
     'eol.changed': 'Fin de línea: {eol}. Se aplica al guardar.', 'tabsize.title': 'Tamaño de la tabulación', 'tabsize.n': '{n} espacios',
 
-    'sw.newVersion': 'Hay una versión nueva de MultiPad.', 'sw.update': 'Actualizar',
-    'sw.updated': 'MultiPad se actualizó. Recarga esta ventana cuando puedas.', 'sw.reload': 'Recargar',
+    'sw.newVersion': 'Hay una versión nueva de Multipad.', 'sw.update': 'Actualizar',
+    'sw.updated': 'Multipad se actualizó. Recarga esta ventana cuando puedas.', 'sw.reload': 'Recargar',
 
     'sc.title': 'Atajos de teclado',
     'sc.intro': 'En Mac usa Cmd en lugar de Ctrl. En una pestaña normal del navegador, Ctrl+N y Ctrl+W los toma el navegador; por eso hay atajos con Alt.',
@@ -131,14 +131,14 @@ const DICT = {
     'sc.split': 'Dividir panel', 'sc.moveTab': 'Mover pestaña al otro panel', 'sc.newWindow': 'Ventana nueva', 'sc.sidebar': 'Panel lateral',
     'sc.zoom': 'Tamaño de letra', 'sc.wrap': 'Ajuste de línea', 'sc.language': 'Cambiar el lenguaje del documento',
 
-    'about.menu': 'Acerca de MultiPad',
+    'about.menu': 'Acerca de Multipad',
     'about.text': 'Editor de código para computadora, tablet y celular. Los documentos se guardan en este navegador y, cuando el navegador lo permite, directamente en tus archivos.',
     'about.credits': 'Usa CodeMirror 6, Pyodide, sql.js y marked (licencias MIT y MPL). Los lenguajes compilados se ejecutan en Judge0.',
 
     'keys.run': '▶ Ejecutar', 'keys.find': 'Buscar',
 
     'welcome.name': 'Bienvenida.md',
-    'welcome.doc': `# Bienvenido a MultiPad
+    'welcome.doc': `# Bienvenido a Multipad
 
 Editor de código para computadora, tablet y celular.
 
@@ -178,7 +178,7 @@ El botón ES/EN de arriba cambia el idioma. Puedes cerrar este documento cuando 
     'top.otherScreen': 'Window on another screen', 'top.run': 'Run', 'top.runTitle': 'Run or preview (F5)',
     'top.uiLang': 'Interface language: switch to Spanish', 'top.winLabel': 'Name of this window (click to rename)',
 
-    'side.folders': 'Folders', 'side.openFolder': 'Open folder', 'side.docs': 'Workspace documents',
+    'act.files': 'Files', 'act.search': 'Search', 'act.run': 'Run', 'act.settings': 'Settings', 'set.title': 'Settings', 'side.folders': 'Folders', 'side.openFolder': 'Open folder', 'side.docs': 'Workspace documents',
     'folder.none': 'No folder open.', 'folder.needChrome': 'Opening folders requires desktop Chrome or Edge.',
     'folder.remove': 'Remove folder from the list', 'folder.noPermission': 'No permission to read the folder.',
     'folder.tapToAllow': 'Tap the folder to grant access', 'folder.unsupported': 'This browser cannot open whole folders. Use File → Open to pick files.',
@@ -189,7 +189,7 @@ El botón ES/EN de arriba cambia el idioma. Puedes cerrar este documento cuando 
 
     'pane.options': 'Pane options', 'pane.empty': 'Empty pane', 'pane.documents': 'Documents', 'pane.title': 'Pane',
     'pane.hintTouch': 'Use the ⋮ menu on a tab to move it here.', 'pane.hintMouse': 'You can also drag tabs or files into this pane.',
-    'pane.closeAllTabs': 'Close all tabs',
+    'pane.closeAllTabs': 'Close all tabs', 'pane.tagline': 'Write. Edit. Run.',
 
     'tab.close': 'Close', 'tab.closeOthers': 'Close others', 'tab.moveOther': 'Move to other pane', 'tab.cloneOther': 'Clone to other pane',
     'tab.sendWindow': 'Send to another window…', 'tab.newWindow': 'Open in new window', 'tab.otherScreen': 'Open on another screen',
@@ -197,7 +197,7 @@ El botón ES/EN de arriba cambia el idioma. Puedes cerrar este documento cuando 
 
     'cmd.new': 'New', 'cmd.open': 'Open…', 'cmd.openShort': 'Open…', 'cmd.openFolder': 'Open folder…', 'cmd.save': 'Save',
     'cmd.saveAs': 'Save as…', 'cmd.saveAll': 'Save all', 'cmd.rename': 'Rename…', 'cmd.closeTab': 'Close tab',
-    'cmd.closeAll': 'Close all', 'cmd.install': 'Install MultiPad on this device',
+    'cmd.closeAll': 'Close all', 'cmd.install': 'Install Multipad on this device',
     'cmd.undo': 'Undo', 'cmd.redo': 'Redo', 'cmd.find': 'Find and replace', 'cmd.goto': 'Go to line…',
     'cmd.comment': 'Toggle comment', 'cmd.dupLine': 'Duplicate line', 'cmd.delLine': 'Delete line', 'cmd.upper': 'UPPERCASE',
     'cmd.lower': 'lowercase', 'cmd.sortLines': 'Sort lines', 'cmd.trim': 'Trim trailing spaces',
@@ -217,7 +217,7 @@ El botón ES/EN de arriba cambia el idioma. Puedes cerrar este documento cuando 
     'lang.menuTitle': 'Language of {name}', 'lang.menuTitleNone': 'No active document', 'lang.whatRuns': 'Which languages can run?',
     'lang.badgeTitle': 'Document language (click to change). Run: {where}',
     'lang.tableTitle': 'Languages and running code',
-    'lang.tableIntro': 'MultiPad picks the language from the file extension. If it guesses wrong, change it from the Language menu, the badge next to Run, or the status bar (Alt+L).',
+    'lang.tableIntro': 'Multipad picks the language from the file extension. If it guesses wrong, change it from the Language menu, the badge next to Run, or the status bar (Alt+L).',
     'lang.colLang': 'Language', 'lang.colExt': 'Extensions', 'lang.colRun': 'When you press Run (F5)',
     'lang.tableNote': 'The HTML preview includes the .css and .js files the HTML links to, if they are in the workspace with the same name. Images with relative paths do not show in the preview; use full URLs.',
 
@@ -229,15 +229,15 @@ El botón ES/EN de arriba cambia el idioma. Puedes cerrar este documento cuando 
     'status.pos': 'Ln {line}, Col {col}', 'status.sel': 'Sel: {n}', 'status.lines': '{n} lines', 'status.cursors': '{n} cursors',
     'status.spaces': 'Spaces: {n}',
 
-    'run.preview': 'Preview', 'run.console': 'Console', 'run.auto': 'Live', 'run.stdin': 'Input (stdin) for input(), Scanner, cin…',
+    'run.preview': 'Preview', 'run.console': 'Console', 'run.output': 'Output', 'run.clear': 'Clear console', 'run.toggleTerm': 'Show or hide the console', 'run.auto': 'Live', 'run.stdin': 'Input (stdin) for input(), Scanner, cin…',
     'run.stdinPlaceholder': 'Type what your program reads with input(), Scanner, cin… One answer per line.',
     'run.popout': 'Open the preview in a separate window (you can move it to another screen)', 'run.stop': 'Stop (Shift+F5)',
     'run.again': 'Run again (F5)', 'run.close': 'Close panel',
-    'run.noDoc': 'No active document to run.', 'run.notRunnable': '{lang} does not run; MultiPad only edits it.',
+    'run.noDoc': 'No active document to run.', 'run.notRunnable': '{lang} does not run; Multipad only edits it.',
     'run.seeTable': 'Language menu → "Which languages can run?" shows the full list.',
-    'run.headPreview': '▶ Preview: {name}', 'run.headRun': '▶ {name} · {where}', 'run.headCheck': '▶ Checking {name}',
+    'run.headPreview': 'Preview: {name}', 'run.headRun': '{name} · {where}', 'run.headCheck': 'Checking {name}',
     'run.whereBrowser': 'in the browser', 'run.whereSqlite': 'SQLite in the browser', 'run.whereRemote': 'server {host}',
-    'run.usingHost': 'Showing {host}, which uses {file}.', 'run.missing': 'Could not find "{file}" in the workspace; open it in MultiPad so the preview includes it.',
+    'run.usingHost': 'Showing {host}, which uses {file}.', 'run.missing': 'Could not find "{file}" in the workspace; open it in Multipad so the preview includes it.',
     'run.cssNoHost': 'No HTML in the workspace links to {file}; showing a sample page with those styles.',
     'run.sample.h1': 'Sample heading', 'run.sample.p': 'A paragraph with a', 'run.sample.link': 'link', 'run.sample.item': 'Item',
     'run.sample.button': 'Button', 'run.sample.input': 'Text field',
@@ -286,8 +286,8 @@ El botón ES/EN de arriba cambia el idioma. Puedes cerrar este documento cuando 
 
     'eol.changed': 'Line ending: {eol}. Applied when you save.', 'tabsize.title': 'Tab size', 'tabsize.n': '{n} spaces',
 
-    'sw.newVersion': 'A new version of MultiPad is available.', 'sw.update': 'Update',
-    'sw.updated': 'MultiPad was updated. Reload this window when you can.', 'sw.reload': 'Reload',
+    'sw.newVersion': 'A new version of Multipad is available.', 'sw.update': 'Update',
+    'sw.updated': 'Multipad was updated. Reload this window when you can.', 'sw.reload': 'Reload',
 
     'sc.title': 'Keyboard shortcuts',
     'sc.intro': 'On Mac use Cmd instead of Ctrl. In a regular browser tab, Ctrl+N and Ctrl+W belong to the browser; that is why there are Alt shortcuts.',
@@ -298,14 +298,14 @@ El botón ES/EN de arriba cambia el idioma. Puedes cerrar este documento cuando 
     'sc.split': 'Split pane', 'sc.moveTab': 'Move tab to other pane', 'sc.newWindow': 'New window', 'sc.sidebar': 'Sidebar',
     'sc.zoom': 'Text size', 'sc.wrap': 'Word wrap', 'sc.language': 'Change document language',
 
-    'about.menu': 'About MultiPad',
+    'about.menu': 'About Multipad',
     'about.text': 'Code editor for desktop, tablet and phone. Documents are saved in this browser and, when the browser allows it, straight to your files.',
     'about.credits': 'Built with CodeMirror 6, Pyodide, sql.js and marked (MIT and MPL licenses). Compiled languages run on Judge0.',
 
     'keys.run': '▶ Run', 'keys.find': 'Find',
 
     'welcome.name': 'Welcome.md',
-    'welcome.doc': `# Welcome to MultiPad
+    'welcome.doc': `# Welcome to Multipad
 
 Code editor for desktop, tablet and phone.
 

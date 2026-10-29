@@ -1,8 +1,8 @@
-# MultiPad
+# Multipad
 
 [Versión en español](README.md)
 
-A code editor that runs in the browser and installs as an app on desktop, tablet and phone. It is modeled on Notepad++, with two additions: each window can be split into several panes, and you can have several MultiPad windows open at once, each with its own content (for example, one per monitor).
+A code editor that runs in the browser and installs as an app on desktop, tablet and phone. It is modeled on Notepad++, with two additions: each window can be split into several panes, and you can have several Multipad windows open at once, each with its own content (for example, one per monitor).
 
 No server or database. Plain HTML, CSS and JavaScript, published for free on GitHub Pages.
 
@@ -13,7 +13,7 @@ No server or database. Plain HTML, CSS and JavaScript, published for free on Git
 - **Language** menu like Notepad++: lists every language, checks the current one and lets you change it. The current language also shows next to Run and in the status bar.
 - Tabs with unsaved-change markers, reorderable by dragging.
 - Up to 4 panes per window, side by side or stacked, with draggable dividers.
-- Several MultiPad windows at once. "New window on another screen" opens it directly on the second monitor (desktop Chrome and Edge).
+- Several Multipad windows at once. "New window on another screen" opens it directly on the second monitor (desktop Chrome and Edge).
 - Move tabs between windows by dragging them or with "Send to another window…". A file open in two windows stays in sync.
 - Syntax highlighting for HTML, CSS, JavaScript/TypeScript, JSON, PHP, Python, Java, Kotlin, C#, C/C++, Rust, Go, Ruby, SQL, Markdown, XML, YAML, Shell and PowerShell.
 - Find and replace with regex, go to line, multiple cursors, code folding, autocomplete.
@@ -23,7 +23,7 @@ No server or database. Plain HTML, CSS and JavaScript, published for free on Git
 
 | Language | What Run does | Where it runs |
 |---|---|---|
-| HTML | Live preview, including linked `.css` and `.js` files open in MultiPad with the same name | Browser |
+| HTML | Live preview, including linked `.css` and `.js` files open in Multipad with the same name | Browser |
 | CSS | Shows the HTML that links it, or a sample page | Browser |
 | JavaScript | Shows the HTML that links it; otherwise runs it and prints `console.log` | Browser |
 | Markdown | Formatted preview | Browser |
@@ -50,6 +50,6 @@ Then Settings → Pages → Deploy from a branch, `main`, `/ (root)`. When you p
 
 Open `https://gleimbek.github.io/multipad/`, then:
 
-- Windows / Mac / Linux (Chrome or Edge): install icon in the address bar, or File → Install MultiPad.
+- Windows / Mac / Linux (Chrome or Edge): install icon in the address bar, or File → Install Multipad.
 - Android (Chrome): ⋮ menu → Install app.
 - iPhone / iPad (Safari): Share → Add to Home Screen.

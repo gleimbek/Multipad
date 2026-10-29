@@ -1,6 +1,6 @@
 // Service worker: guarda la app en caché para que abra sin conexión.
 // Cambia VERSION cada vez que publiques cambios; así cada dispositivo descarga la versión nueva.
-const VERSION = 'multipad-v1.1.0';
+const VERSION = 'multipad-v1.2.0';
 
 const ASSETS = [
   './',
@@ -17,7 +17,9 @@ const ASSETS = [
   './vendor/markdown.js',
   './vendor/codemirror.js',
   './manifest.webmanifest',
-  './icons/favicon.svg',
+  './icons/favicon-32.png',
+  './icons/favicon-64.png',
+  './icons/logo-mark.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',

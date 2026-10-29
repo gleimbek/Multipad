@@ -106,6 +106,10 @@ export function createRunner(api) {
 
   /* ---------------- panel ---------------- */
 
+  const previewWrap = $('#previewWrap');
+  const term = $('#term');
+  const termDivider = $('#termDivider');
+
   function layoutPanel() {
     const st = state();
     const main = $('#main');
@@ -115,10 +119,10 @@ export function createRunner(api) {
     divider.hidden = !st.open;
     if (bottom) {
       panel.style.width = '';
-      panel.style.height = Math.min(st.sizeV || 300, window.innerHeight * 0.7) + 'px';
+      panel.style.height = Math.min(st.sizeV || 320, window.innerHeight * 0.7) + 'px';
     } else {
       panel.style.height = '';
-      panel.style.width = Math.min(st.size || 460, window.innerWidth - 260) + 'px';
+      panel.style.width = Math.min(st.size || 480, window.innerWidth - 300) + 'px';
     }
     autoBox.checked = !!st.auto;
     stdinBox.hidden = !st.stdin;
@@ -127,17 +131,31 @@ export function createRunner(api) {
     api.onResize();
   }
 
+  // "preview": navegador arriba y consola abajo. "console": solo la consola (Python, SQL, Java…).
   function showTab(tab) {
-    state().tab = tab;
-    for (const b of panel.querySelectorAll('[data-runtab]')) b.classList.toggle('on', b.dataset.runtab === tab);
-    frame.hidden = tab !== 'preview';
-    out.hidden = tab !== 'console';
-    if (tab === 'console') { errors = 0; updateBadge(); }
+    const st = state();
+    st.tab = tab;
+    const consoleOnly = tab === 'console';
+    panel.classList.toggle('console-only', consoleOnly);
+    previewWrap.hidden = consoleOnly;
+    term.classList.toggle('collapsed', !consoleOnly && !!st.termCollapsed);
+    termDivider.hidden = consoleOnly || !!st.termCollapsed;
+    term.style.height = consoleOnly ? '' : (st.termCollapsed ? '' : (st.termSize || 170) + 'px');
+    $('#runTitle').textContent = t(consoleOnly ? 'run.output' : 'run.preview');
+    if (!termHidden()) { errors = 0; updateBadge(); }
   }
+
+  const termHidden = () => !panel.classList.contains('console-only') && term.classList.contains('collapsed');
 
   function updateBadge() {
     errBadge.textContent = errors ? String(errors) : '';
     errBadge.hidden = !errors;
+  }
+
+  function setTermCollapsed(collapsed) {
+    state().termCollapsed = collapsed;
+    api.saveState();
+    showTab(state().tab);
   }
 
   function open() {
@@ -154,7 +172,6 @@ export function createRunner(api) {
     if (state().open) close(); else open();
   }
 
-  panel.querySelectorAll('[data-runtab]').forEach((b) => b.addEventListener('click', () => { showTab(b.dataset.runtab); api.saveState(); }));
   $('#runClose').addEventListener('click', close);
   $('#runStop').addEventListener('click', () => stop());
   $('#runAgain').addEventListener('click', () => run());
@@ -162,6 +179,33 @@ export function createRunner(api) {
   $('#runStdinBtn').addEventListener('click', () => { state().stdin = !state().stdin; api.saveState(); layoutPanel(); if (state().stdin) stdinBox.focus(); });
   autoBox.addEventListener('change', () => { state().auto = autoBox.checked; api.saveState(); });
   stdinBox.addEventListener('input', debounce(() => { state().stdinText = stdinBox.value; api.saveState(); }, 400));
+  $('#termToggle').addEventListener('click', () => { if (!panel.classList.contains('console-only')) setTermCollapsed(!state().termCollapsed); });
+  $('#termHead').addEventListener('dblclick', (e) => { if (!e.target.closest('button')) $('#termToggle').click(); });
+  $('#termClear').addEventListener('click', () => clearConsole());
+
+  termDivider.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    termDivider.setPointerCapture(e.pointerId);
+    termDivider.classList.add('dragging');
+    const start = e.clientY;
+    const startH = term.getBoundingClientRect().height;
+    const max = panel.getBoundingClientRect().height - 120;
+    frame.style.pointerEvents = 'none';
+    const move = (ev) => {
+      const h = Math.max(70, Math.min(max, startH + (start - ev.clientY)));
+      state().termSize = h;
+      term.style.height = h + 'px';
+    };
+    const up = () => {
+      termDivider.classList.remove('dragging');
+      frame.style.pointerEvents = '';
+      termDivider.removeEventListener('pointermove', move);
+      termDivider.removeEventListener('pointerup', up);
+      api.saveState();
+    };
+    termDivider.addEventListener('pointermove', move);
+    termDivider.addEventListener('pointerup', up);
+  });
 
   divider.addEventListener('pointerdown', (e) => {
     e.preventDefault();
@@ -203,7 +247,7 @@ export function createRunner(api) {
     const line = el('div', { class: 'cl ' + level, text });
     out.append(line);
     if (level === 'error') {
-      if (out.hidden) errors++;
+      if (termHidden()) errors++;
       updateBadge();
     }
     out.scrollTop = out.scrollHeight;
@@ -237,6 +281,7 @@ export function createRunner(api) {
 
   function render(html, title, tab = 'preview') {
     lastRender = { html, title, dark: api.isDark() };
+    sourceEl.textContent = title || '';
     frame.srcdoc = html;
     previewBc.postMessage({ type: 'render', wid: api.wid, ...lastRender });
     if (tab) showTab(tab);

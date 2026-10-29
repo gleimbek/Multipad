@@ -1,4 +1,4 @@
-# MultiPad
+# Multipad
 
 [English version](README.en.md)
 
@@ -14,7 +14,7 @@ No necesita servidor ni base de datos. Es HTML, CSS y JavaScript sin frameworks,
 - Pestañas con indicador de cambios sin guardar, reordenables arrastrando.
 - Hasta 4 paneles por ventana, en fila o en columna, con divisores que se arrastran (doble clic en el divisor los empareja).
 - Mover una pestaña a otro panel, o clonarla para ver el mismo archivo en dos lugares.
-- Varias ventanas de MultiPad al mismo tiempo. Cada una recuerda sus pestañas y paneles.
+- Varias ventanas de Multipad al mismo tiempo. Cada una recuerda sus pestañas y paneles.
 - "Ventana nueva en otra pantalla": abre la ventana directamente en el segundo monitor (Chrome y Edge de escritorio).
 - Pasar pestañas entre ventanas: arrastrándolas o con "Enviar a otra ventana…".
 - Si el mismo archivo está abierto en dos ventanas, lo que escribes en una aparece en la otra.
@@ -28,11 +28,11 @@ No necesita servidor ni base de datos. Es HTML, CSS y JavaScript sin frameworks,
 
 ## Lenguajes y ejecución
 
-MultiPad elige el lenguaje por la extensión. Si no acierta, se cambia desde el menú Lenguaje o con Alt+L. En el menú, los lenguajes con ▶ se pueden ejecutar.
+Multipad elige el lenguaje por la extensión. Si no acierta, se cambia desde el menú Lenguaje o con Alt+L. En el menú, los lenguajes con ▶ se pueden ejecutar.
 
 | Lenguaje | Qué pasa al pulsar Ejecutar | Dónde corre |
 |---|---|---|
-| HTML | Vista previa en vivo. Incluye los `.css` y `.js` que enlaza si están abiertos en MultiPad con el mismo nombre. | Navegador |
+| HTML | Vista previa en vivo. Incluye los `.css` y `.js` que enlaza si están abiertos en Multipad con el mismo nombre. | Navegador |
 | CSS | Muestra el HTML que lo enlaza; si ninguno lo usa, una página de ejemplo | Navegador |
 | JavaScript | Si un HTML lo enlaza, muestra ese HTML; si no, lo ejecuta y `console.log` sale en la consola | Navegador |
 | Markdown | Vista previa formateada | Navegador |
@@ -49,7 +49,7 @@ Si el programa lee del teclado (`input()`, `Scanner`, `cin`), escribe las respue
 
 ### Sobre Judge0
 
-Los lenguajes compilados necesitan un servidor. Por defecto MultiPad usa `https://ce.judge0.com`, la instancia pública de Judge0. No pude probarla desde mi entorno, así que conviene verificarla en tu dispositivo con un "hola mundo" en Java. Si falla, hay dos opciones en Ejecutar → Servidor para Java, C++, C#…:
+Los lenguajes compilados necesitan un servidor. Por defecto Multipad usa `https://ce.judge0.com`, la instancia pública de Judge0. No pude probarla desde mi entorno, así que conviene verificarla en tu dispositivo con un "hola mundo" en Java. Si falla, hay dos opciones en Ejecutar → Servidor para Java, C++, C#…:
 
 - Judge0 por RapidAPI: dirección `https://judge0-ce.p.rapidapi.com` y tu clave (tiene un plan gratuito con límite diario).
 - Tu propio Judge0 (Docker): su dirección y su token.
@@ -108,7 +108,7 @@ Abre `sw.js` y sube el número de `VERSION` (por ejemplo `multipad-v1.0.1`). Si 
 
 Abre `https://gleimbek.github.io/multipad/` y:
 
-- **Windows / Mac / Linux (Chrome o Edge):** el ícono de instalar en la barra de direcciones, o menú **Archivo → Instalar MultiPad**. Queda como app con su propia ventana y en el menú Inicio/Launchpad. En Windows además aparece en "Abrir con…" para archivos de código.
+- **Windows / Mac / Linux (Chrome o Edge):** el ícono de instalar en la barra de direcciones, o menú **Archivo → Instalar Multipad**. Queda como app con su propia ventana y en el menú Inicio/Launchpad. En Windows además aparece en "Abrir con…" para archivos de código.
 - **Android (Chrome):** menú ⋮ → **Instalar aplicación** (o "Agregar a la pantalla principal").
 - **iPhone / iPad (Safari):** botón Compartir → **Agregar a pantalla de inicio**.
 
@@ -123,7 +123,7 @@ En una computadora con dos monitores:
 
 Si cierras una ventana, sus pestañas no se pierden: **Ventana → Reabrir ventana cerrada…**.
 
-En tablets, "varias ventanas" depende del sistema: en Android puedes usar pantalla dividida con dos ventanas de Chrome; en iPad, Split View de Safari con dos pestañas de MultiPad. La app instalada en la pantalla de inicio del iPad abre una sola instancia, es una limitación de iPadOS.
+En tablets, "varias ventanas" depende del sistema: en Android puedes usar pantalla dividida con dos ventanas de Chrome; en iPad, Split View de Safari con dos pestañas de Multipad. La app instalada en la pantalla de inicio del iPad abre una sola instancia, es una limitación de iPadOS.
 
 ## Atajos principales
 
