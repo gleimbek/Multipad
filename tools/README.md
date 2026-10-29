@@ -10,3 +10,10 @@ npx esbuild codemirror-entry.js --bundle --format=esm --minify --legal-comments=
 ```
 
 No subas `tools/node_modules` al repositorio (ya está en `.gitignore`).
+
+`vendor/markdown.js` (vista previa de Markdown) se genera igual desde `markdown-entry.js`:
+
+```bash
+npm i marked dompurify
+npx esbuild markdown-entry.js --bundle --format=esm --minify --legal-comments=none --outfile=../vendor/markdown.js
+```

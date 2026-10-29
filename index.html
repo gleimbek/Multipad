@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>MultiPad</title>
-  <meta name="description" content="Editor de código con pestañas, paneles divididos y varias ventanas. Funciona en computadora, tablet y celular.">
+  <meta name="description" content="Editor de código con pestañas, paneles, varias ventanas y vista previa. Code editor with tabs, panes, multiple windows and live preview.">
   <meta name="theme-color" content="#16191d">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
@@ -17,65 +17,111 @@
 <body>
   <div id="app">
     <header id="topbar">
-      <button class="icon-btn" id="btnSidebar" title="Panel lateral (Ctrl+B)" aria-label="Panel lateral">
+      <button class="icon-btn" id="btnSidebar" data-i18n-title="top.sidebar" data-i18n-aria-label="top.sidebar">
         <svg viewBox="0 0 24 24"><path d="M3 5h18v14H3z M9 5v14" /></svg>
       </button>
-      <nav id="menubar" aria-label="Menú principal">
-        <button class="menu-btn" data-menu="archivo">Archivo</button>
-        <button class="menu-btn" data-menu="editar">Editar</button>
-        <button class="menu-btn" data-menu="ver">Ver</button>
-        <button class="menu-btn" data-menu="ventana">Ventana</button>
-        <button class="menu-btn" data-menu="ayuda">Ayuda</button>
+      <button class="icon-btn menu-btn" id="btnMenu" data-i18n-title="menu.all" data-i18n-aria-label="menu.all">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16 M4 12h16 M4 17h16" /></svg>
+      </button>
+      <nav id="menubar">
+        <button class="menu-btn" data-menu="file" data-i18n="menu.file"></button>
+        <button class="menu-btn" data-menu="edit" data-i18n="menu.edit"></button>
+        <button class="menu-btn" data-menu="view" data-i18n="menu.view"></button>
+        <button class="menu-btn" data-menu="language" data-i18n="menu.language"></button>
+        <button class="menu-btn" data-menu="run" data-i18n="menu.run"></button>
+        <button class="menu-btn" data-menu="window" data-i18n="menu.window"></button>
+        <button class="menu-btn" data-menu="help" data-i18n="menu.help"></button>
       </nav>
       <div id="quick">
-        <button class="icon-btn" data-cmd="new" title="Nuevo (Alt+N)" aria-label="Nuevo">
+        <button class="icon-btn" data-cmd="new" data-i18n-title="top.new" data-i18n-aria-label="top.new">
           <svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z M14 3v4h4 M12 11v6 M9 14h6" /></svg>
         </button>
-        <button class="icon-btn" data-cmd="open" title="Abrir (Ctrl+O)" aria-label="Abrir">
+        <button class="icon-btn" data-cmd="open" data-i18n-title="top.open" data-i18n-aria-label="top.open">
           <svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z" /></svg>
         </button>
-        <button class="icon-btn" data-cmd="save" title="Guardar (Ctrl+S)" aria-label="Guardar">
+        <button class="icon-btn" data-cmd="save" data-i18n-title="top.save" data-i18n-aria-label="top.save">
           <svg viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5z M8 3v5h8V3 M8 14h8v7H8z" /></svg>
         </button>
         <span class="sep"></span>
-        <button class="icon-btn" data-cmd="splitRight" title="Dividir a la derecha (Ctrl+\)" aria-label="Dividir a la derecha">
+        <button class="icon-btn" data-cmd="splitRight" data-i18n-title="top.splitRight" data-i18n-aria-label="top.splitRight">
           <svg viewBox="0 0 24 24"><path d="M3 4h18v16H3z M12 4v16" /></svg>
         </button>
-        <button class="icon-btn" data-cmd="splitDown" title="Dividir abajo" aria-label="Dividir abajo">
+        <button class="icon-btn" data-cmd="splitDown" data-i18n-title="top.splitDown" data-i18n-aria-label="top.splitDown">
           <svg viewBox="0 0 24 24"><path d="M3 4h18v16H3z M3 12h18" /></svg>
         </button>
-        <button class="icon-btn" data-cmd="newWindow" title="Ventana nueva (Alt+Shift+N)" aria-label="Ventana nueva">
+        <button class="icon-btn" data-cmd="newWindow" data-i18n-title="top.newWindow" data-i18n-aria-label="top.newWindow">
           <svg viewBox="0 0 24 24"><path d="M8 3h13v11H8z M8 7h13 M5 8H3v13h13v-2" /></svg>
         </button>
-        <button class="icon-btn" data-cmd="otherScreen" title="Ventana en otra pantalla" aria-label="Ventana en otra pantalla">
+        <button class="icon-btn" data-cmd="otherScreen" data-i18n-title="top.otherScreen" data-i18n-aria-label="top.otherScreen">
           <svg viewBox="0 0 24 24"><path d="M2 4h9v7H2z M13 9h9v7h-9z M5 14v3h4 M16 16v3h3" /></svg>
         </button>
       </div>
-      <div id="winLabel" title="Nombre de esta ventana (clic para renombrar)"></div>
+      <div id="runGroup">
+        <button id="langBadge" class="lang-badge" hidden></button>
+        <button id="btnRun" class="run-btn" data-cmd="run" data-i18n-title="top.runTitle">
+          <svg viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z" /></svg>
+          <span data-i18n="top.run"></span>
+        </button>
+      </div>
+      <div id="topRight">
+        <button id="btnUiLang" class="pill-btn" data-i18n-title="top.uiLang">ES</button>
+        <div id="winLabel" data-i18n-title="top.winLabel"></div>
+      </div>
     </header>
 
     <div id="main">
       <aside id="sidebar" hidden>
         <section class="side-section">
           <div class="side-head">
-            <span>Carpetas</span>
-            <button class="icon-btn small" data-cmd="openFolder" title="Abrir carpeta" aria-label="Abrir carpeta">
+            <span data-i18n="side.folders"></span>
+            <button class="icon-btn small" data-cmd="openFolder" data-i18n-title="side.openFolder" data-i18n-aria-label="side.openFolder">
               <svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z M12 12v5 M9.5 14.5h5" /></svg>
             </button>
           </div>
           <div id="folderTree" class="tree"></div>
         </section>
         <section class="side-section grow">
-          <div class="side-head">
-            <span>Documentos del espacio</span>
-          </div>
+          <div class="side-head"><span data-i18n="side.docs"></span></div>
           <div id="docList" class="doclist"></div>
         </section>
       </aside>
+
       <div id="panes"></div>
+
+      <div id="runDivider" class="run-divider" hidden></div>
+      <aside id="runPanel" hidden>
+        <div class="run-head">
+          <div class="run-tabs" role="tablist">
+            <button data-runtab="preview" data-i18n="run.preview"></button>
+            <button data-runtab="console"><span data-i18n="run.console"></span><span id="runErrCount" class="err-count" hidden></span></button>
+          </div>
+          <span id="runSource" class="run-source"></span>
+          <span class="grow"></span>
+          <label class="run-auto" data-i18n-title="cmd.runAuto"><input type="checkbox" id="runAuto"> <span data-i18n="run.auto"></span></label>
+          <button class="icon-btn small text" id="runStdinBtn" data-i18n-title="run.stdin">stdin</button>
+          <button class="icon-btn small" id="runAgain" data-i18n-title="run.again" data-i18n-aria-label="run.again">
+            <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7 M20 4v5h-5" /></svg>
+          </button>
+          <button class="icon-btn small" id="runStop" hidden data-i18n-title="run.stop" data-i18n-aria-label="run.stop">
+            <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z" /></svg>
+          </button>
+          <button class="icon-btn small" id="runPopout" data-i18n-title="run.popout" data-i18n-aria-label="run.popout">
+            <svg viewBox="0 0 24 24"><path d="M14 4h6v6 M20 4l-9 9 M18 14v6H4V6h6" /></svg>
+          </button>
+          <button class="icon-btn small" id="runClose" data-i18n-title="run.close" data-i18n-aria-label="run.close">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12 M18 6L6 18" /></svg>
+          </button>
+        </div>
+        <textarea id="runStdin" hidden spellcheck="false" data-i18n-placeholder="run.stdinPlaceholder"></textarea>
+        <div class="run-body">
+          <iframe id="runFrame" sandbox="allow-scripts allow-modals allow-forms allow-popups" title="Preview"></iframe>
+          <div id="runConsole" class="run-console" hidden></div>
+        </div>
+      </aside>
     </div>
 
     <div id="mobileKeys" hidden>
+      <button data-key="run" class="key-run" data-i18n="keys.run"></button>
       <button data-key="tab">⇥</button>
       <button data-ins="{}">{ }</button>
       <button data-ins="()">( )</button>
@@ -92,17 +138,17 @@
       <button data-key="down">↓</button>
       <button data-key="undo">↶</button>
       <button data-key="redo">↷</button>
-      <button data-key="find">Buscar</button>
+      <button data-key="find" data-i18n="keys.find"></button>
     </div>
 
     <footer id="statusbar">
       <span id="stPos">Ln 1, Col 1</span>
       <span id="stSel"></span>
       <span class="grow"></span>
-      <button id="stIndent" class="st-btn" title="Tamaño de tabulación"></button>
-      <button id="stEol" class="st-btn" title="Fin de línea"></button>
+      <button id="stIndent" class="st-btn"></button>
+      <button id="stEol" class="st-btn"></button>
       <span>UTF-8</span>
-      <button id="stLang" class="st-btn" title="Lenguaje"></button>
+      <button id="stLang" class="st-btn"></button>
     </footer>
   </div>
 

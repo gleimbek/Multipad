@@ -1,138 +1,17 @@
-// MultiPad: editor de código con pestañas, paneles y varias ventanas sincronizadas.
+// MultiPad: editor de código con pestañas, paneles, varias ventanas sincronizadas y panel de ejecución.
 import * as CM from '../vendor/codemirror.js';
 import { db } from './db.js';
 import { LANGS, langById, langExtension, detectLang } from './langs.js';
+import { t, getLang, setLang, applyI18n, detectBrowserLang } from './i18n.js';
+import { $, el, icon, uid, debounce, toast, openModal, promptModal, confirmModal, pickModal, infoModal } from './util.js';
+import { createRunner, runKind } from './runner.js';
 
-/* ------------------------------------------------------------------ utilidades */
-
-const $ = (sel, root = document) => root.querySelector(sel);
-const uid = () => Math.random().toString(36).slice(2, 10);
-const SVG_NS = 'http://www.w3.org/2000/svg';
 const TAB_MIME = 'application/x-multipad-tab';
 const isTouch = () => matchMedia('(pointer: coarse)').matches;
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const UNTITLED_RE = /^(nuevo|new) \d+$/;
 
-function el(tag, attrs = {}, ...kids) {
-  const n = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (v == null || v === false) continue;
-    if (k === 'class') n.className = v;
-    else if (k === 'text') n.textContent = v;
-    else if (k === 'dataset') Object.assign(n.dataset, v);
-    else if (k.startsWith('on') && typeof v === 'function') n.addEventListener(k.slice(2), v);
-    else n.setAttribute(k, v === true ? '' : v);
-  }
-  for (const c of kids.flat()) if (c != null && c !== false) n.append(c);
-  return n;
-}
-
-function icon(d) {
-  const s = document.createElementNS(SVG_NS, 'svg');
-  s.setAttribute('viewBox', '0 0 24 24');
-  const p = document.createElementNS(SVG_NS, 'path');
-  p.setAttribute('d', d);
-  s.append(p);
-  return s;
-}
-
-function debounce(fn, ms) {
-  let t;
-  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
-}
-
-/* ------------------------------------------------------------------ avisos y modales */
-
-function toast(msg, { action, onAction, timeout = 4500 } = {}) {
-  const t = el('div', { class: 'toast' }, el('span', { text: msg }));
-  if (action) {
-    t.append(el('button', { text: action, onclick: () => { t.remove(); onAction?.(); } }));
-    timeout = Math.max(timeout, 9000);
-  }
-  $('#toasts').append(t);
-  setTimeout(() => t.remove(), timeout);
-}
-
-function openModal(content) {
-  const layer = $('#modalLayer');
-  layer.textContent = '';
-  layer.append(content);
-  layer.hidden = false;
-  return () => { layer.hidden = true; layer.textContent = ''; };
-}
-
-function promptModal({ title, text, value = '', placeholder = '', okLabel = 'Aceptar' }) {
-  return new Promise((resolve) => {
-    const input = el('input', { type: 'text', value, placeholder, autocomplete: 'off', spellcheck: 'false' });
-    let close;
-    const done = (v) => { close(); resolve(v); };
-    const box = el('form', { class: 'modal', onsubmit: (e) => { e.preventDefault(); done(input.value.trim() || null); } },
-      el('h2', { text: title }),
-      text ? el('p', { text }) : null,
-      input,
-      el('div', { class: 'actions' },
-        el('button', { type: 'button', class: 'btn', text: 'Cancelar', onclick: () => done(null) }),
-        el('button', { type: 'submit', class: 'btn primary', text: okLabel })));
-    box.addEventListener('keydown', (e) => { if (e.key === 'Escape') done(null); });
-    close = openModal(box);
-    $('#modalLayer').onclick = (e) => { if (e.target.id === 'modalLayer') done(null); };
-    input.focus();
-    const dot = value.lastIndexOf('.');
-    input.setSelectionRange(0, dot > 0 ? dot : value.length);
-  });
-}
-
-function confirmModal({ title, text, buttons = ['Cancelar', 'Aceptar'] }) {
-  return new Promise((resolve) => {
-    let close;
-    const done = (i) => { close(); resolve(i); };
-    const box = el('div', { class: 'modal', tabindex: '-1' },
-      el('h2', { text: title }),
-      text ? el('p', { text }) : null,
-      el('div', { class: 'actions' },
-        buttons.map((b, i) => el('button', { class: 'btn' + (i === buttons.length - 1 ? ' primary' : ''), text: b, onclick: () => done(i) }))));
-    box.addEventListener('keydown', (e) => { if (e.key === 'Escape') done(0); });
-    close = openModal(box);
-    $('#modalLayer').onclick = (e) => { if (e.target.id === 'modalLayer') done(0); };
-    box.querySelector('.btn.primary')?.focus();
-  });
-}
-
-// Lista con filtro. items: [{label, hint, value}]
-function pickModal({ title, items, placeholder = 'Filtrar…' }) {
-  return new Promise((resolve) => {
-    let close;
-    let sel = 0;
-    let shown = items;
-    const done = (v) => { close(); resolve(v); };
-    const input = el('input', { type: 'text', placeholder, autocomplete: 'off', spellcheck: 'false' });
-    const list = el('div', { class: 'pick-list', role: 'listbox' });
-    const draw = () => {
-      list.textContent = '';
-      shown.forEach((it, i) => {
-        list.append(el('button', { class: 'pick-item' + (i === sel ? ' sel' : ''), type: 'button', onclick: () => done(it.value) },
-          el('span', { text: it.label }), it.hint ? el('span', { class: 'hint', text: it.hint }) : null));
-      });
-      list.children[sel]?.scrollIntoView({ block: 'nearest' });
-    };
-    input.addEventListener('input', () => {
-      const q = input.value.toLowerCase();
-      shown = items.filter((it) => (it.label + ' ' + (it.hint || '')).toLowerCase().includes(q));
-      sel = 0;
-      draw();
-    });
-    const box = el('div', { class: 'modal' }, el('h2', { text: title }), items.length > 6 ? input : null, list);
-    box.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') done(null);
-      else if (e.key === 'ArrowDown') { sel = Math.min(sel + 1, shown.length - 1); draw(); e.preventDefault(); }
-      else if (e.key === 'ArrowUp') { sel = Math.max(sel - 1, 0); draw(); e.preventDefault(); }
-      else if (e.key === 'Enter' && shown[sel]) { e.preventDefault(); done(shown[sel].value); }
-    });
-    close = openModal(box);
-    $('#modalLayer').onclick = (e) => { if (e.target.id === 'modalLayer') done(null); };
-    draw();
-    (items.length > 6 ? input : list.querySelector('.pick-item'))?.focus();
-  });
-}
+const langLabel = (id) => (id === 'text' ? t('lang.text') : langById(id).label);
 
 /* ------------------------------------------------------------------ menús */
 
@@ -180,8 +59,14 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openMenu
 /* ------------------------------------------------------------------ ajustes */
 
 const SETTINGS_KEY = 'multipad:settings';
-const DEFAULTS = { theme: 'auto', fontSize: 14, wrap: window.innerWidth < 700, tabSize: 4, whitespace: false, autocomplete: true, mobileKeys: 'auto' };
+const DEFAULTS = {
+  theme: 'auto', fontSize: 14, wrap: window.innerWidth < 700, tabSize: 4, whitespace: false, autocomplete: true, mobileKeys: 'auto',
+  uiLang: detectBrowserLang(), judgeUrl: 'https://ce.judge0.com', judgeKey: '',
+};
 const settings = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'));
+setLang(settings.uiLang);
+
+const bc = new BroadcastChannel('multipad');
 
 function saveSettings() {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
@@ -200,7 +85,18 @@ const comp = {
   tab: new CM.Compartment(),
   ws: new CM.Compartment(),
   ac: new CM.Compartment(),
+  phrases: new CM.Compartment(),
 };
+
+// Textos internos de CodeMirror (buscar, reemplazar, ir a línea).
+const cmPhrases = () => (getLang() === 'es' ? CM.EditorState.phrases.of({
+  'Find': 'Buscar', 'Replace': 'Reemplazar', 'next': 'siguiente', 'previous': 'anterior', 'all': 'todos',
+  'match case': 'mayús/minús', 'by word': 'palabra completa', 'regexp': 'expresión regular', 'replace': 'reemplazar',
+  'replace all': 'reemplazar todo', 'close': 'cerrar', 'Go to line': 'Ir a línea', 'go': 'ir',
+  'current match': 'coincidencia actual', 'on line': 'en la línea', 'replaced match on line $': 'reemplazada en la línea $',
+  'replaced $ matches': '$ reemplazos', 'Folded lines': 'Líneas plegadas', 'Unfolded lines': 'Líneas desplegadas',
+  'Fold line': 'Plegar línea', 'Unfold line': 'Desplegar línea', 'folded code': 'código plegado', 'unfold': 'desplegar',
+}) : []);
 
 const themeExt = () => (resolvedTheme() === 'dark' ? CM.oneDark : []);
 const wrapExt = () => (settings.wrap ? CM.EditorView.lineWrapping : []);
@@ -208,11 +104,20 @@ const tabExt = () => [CM.indentUnit.of(' '.repeat(settings.tabSize)), CM.EditorS
 const wsExt = () => (settings.whitespace ? [CM.highlightWhitespace(), CM.highlightTrailingWhitespace()] : []);
 const acExt = () => (settings.autocomplete ? CM.autocompletion() : []);
 
+let lastAppliedLang = null;
+let lastAppliedTheme = null;
+
 function applySettings() {
   const theme = resolvedTheme();
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.setProperty('--editor-font', settings.fontSize + 'px');
   $('meta[name="theme-color"]').setAttribute('content', theme === 'dark' ? '#16191d' : '#e4e7ea');
+  const langChanged = lastAppliedLang !== settings.uiLang;
+  if (langChanged) {
+    setLang(settings.uiLang);
+    document.documentElement.lang = getLang();
+    applyI18n(document);
+  }
   for (const v of allViews()) {
     v.dispatch({
       effects: [
@@ -221,18 +126,23 @@ function applySettings() {
         comp.tab.reconfigure(tabExt()),
         comp.ws.reconfigure(wsExt()),
         comp.ac.reconfigure(acExt()),
+        comp.phrases.reconfigure(cmPhrases()),
       ],
     });
     v.requestMeasure();
   }
   const showKeys = settings.mobileKeys === 'on' || (settings.mobileKeys === 'auto' && isTouch());
   $('#mobileKeys').hidden = !showKeys;
+  $('#btnUiLang').textContent = getLang().toUpperCase();
+  if (langChanged && layout) { renderPanes(); renderWinLabel(); refreshDocList(); renderTree(); }
+  if (lastAppliedTheme && lastAppliedTheme !== theme) runner?.rethemeIfNeeded();
+  lastAppliedLang = settings.uiLang;
+  lastAppliedTheme = theme;
   updateStatus();
 }
 
 /* ------------------------------------------------------------------ identidad de la ventana */
 
-const bc = new BroadcastChannel('multipad');
 let WID = new URLSearchParams(location.search).get('w') || sessionStorage.getItem('multipad:wid') || 'main';
 
 // Si otra ventana ya usa este id (pestaña duplicada, app abierta dos veces), se toma uno nuevo.
@@ -261,11 +171,18 @@ function ensureWindowName() {
     const used = Object.values(reg).map((r) => r.n || 0);
     let n = WID === 'main' ? 1 : 2;
     while (used.includes(n)) n++;
-    reg[WID] = { n, name: 'Ventana ' + n };
+    reg[WID] = { n };
     localStorage.setItem(REG_KEY, JSON.stringify(reg));
   }
 }
-const winName = (wid = WID) => registry()[wid]?.name || 'Ventana';
+
+// Las ventanas sin nombre propio se llaman "Ventana N" / "Window N" según el idioma.
+function winName(wid = WID) {
+  const r = registry()[wid];
+  if (!r) return t('win.generic');
+  const custom = r.name && !/^(Ventana|Window) \d+$/.test(r.name) ? r.name : null;
+  return custom || t('win.default', { n: r.n || 1 });
+}
 
 function renderWinLabel() {
   $('#winLabel').textContent = winName();
@@ -273,7 +190,7 @@ function renderWinLabel() {
 }
 
 async function renameWindow() {
-  const name = await promptModal({ title: 'Nombre de esta ventana', value: winName(), text: 'Sirve para reconocerla al mover pestañas entre ventanas o pantallas.' });
+  const name = await promptModal({ title: t('win.renameTitle'), value: winName(), text: t('win.renameText') });
   if (!name) return;
   const reg = registry();
   reg[WID] = { ...(reg[WID] || {}), name };
@@ -284,16 +201,16 @@ async function renameWindow() {
 
 /* ------------------------------------------------------------------ ventanas vivas */
 
-const peers = new Map(); // wid -> {name, seen}
+const peers = new Map(); // wid -> {seen}
 
 function announce(reply = false) {
-  bc.postMessage({ type: 'hello', wid: WID, name: winName(), reply });
+  bc.postMessage({ type: 'hello', wid: WID, reply });
 }
 
 function livePeers() {
   const now = Date.now();
   for (const [wid, p] of peers) if (now - p.seen > 12000) peers.delete(wid);
-  return [...peers.entries()].map(([wid, p]) => ({ wid, name: p.name }));
+  return [...peers.keys()].map((wid) => ({ wid, name: winName(wid) }));
 }
 
 function layoutOf(wid) {
@@ -309,6 +226,7 @@ function isOpenAnywhere(docId) {
 /* ------------------------------------------------------------------ distribución (paneles y pestañas) */
 
 let layout = null;
+let runner = null;
 const layoutKey = () => 'multipad:layout:' + WID;
 const saveLayout = debounce(() => {
   layout.saved = Date.now();
@@ -324,8 +242,8 @@ const focusedPane = () => getPane(layout.focused) || layout.panes[0];
 
 const docs = new Map(); // id -> {rec, views: Map(paneId -> EditorView), dirty, saveTimer, stale}
 const loading = new Map();
-const hostOf = new WeakMap(); // view -> div contenedor
-const paneOfView = new WeakMap(); // view -> paneId
+const hostOf = new WeakMap(); // vista -> div contenedor
+const paneOfView = new WeakMap(); // vista -> id del panel
 const Remote = CM.Annotation.define();
 
 function* allViews() {
@@ -361,7 +279,7 @@ async function persist(d) {
   try {
     await db.putDoc(d.rec);
   } catch (err) {
-    toast('No se pudo guardar en el almacenamiento local: ' + err.message);
+    toast(t('err.localSave', { msg: err.message }));
   }
   refreshDocList();
 }
@@ -381,7 +299,7 @@ function updateDirty(d) {
   const dirty = getText(d) !== (d.rec.savedContent ?? '');
   if (dirty === d.dirty) return;
   d.dirty = dirty;
-  document.querySelectorAll(`.tab[data-doc="${d.rec.id}"]`).forEach((t) => t.classList.toggle('dirty', dirty));
+  document.querySelectorAll(`.tab[data-doc="${d.rec.id}"]`).forEach((tab) => tab.classList.toggle('dirty', dirty));
   updateTitle();
   refreshDocList();
 }
@@ -417,10 +335,27 @@ async function createDoc({ name, content = '', savedContent = '', handle = null,
 
 async function nextUntitledName() {
   const all = await db.allDocs();
-  let n = 1;
+  const base = t('doc.untitled');
   const names = new Set(all.map((r) => r.name));
-  while (names.has('nuevo ' + n)) n++;
-  return 'nuevo ' + n;
+  let n = 1;
+  while (names.has(`${base} ${n}`)) n++;
+  return `${base} ${n}`;
+}
+
+// Documentos con su texto actual (el de la vista si está abierto), para el panel de ejecución.
+async function allDocTexts() {
+  const all = await db.allDocs();
+  return all.map((r) => {
+    const live = docs.get(r.id);
+    return { id: r.id, name: live?.rec.name || r.name, lang: live?.rec.lang || r.lang, text: live ? getText(live) : r.content };
+  });
+}
+
+async function docTextById(id) {
+  const live = docs.get(id);
+  if (live) return { id, name: live.rec.name, lang: live.rec.lang, text: getText(live) };
+  const r = await db.getDoc(id);
+  return r ? { id, name: r.name, lang: r.lang, text: r.content } : null;
 }
 
 /* ------------------------------------------------------------------ vistas del editor */
@@ -462,6 +397,7 @@ function createView(d, paneId) {
         comp.tab.of(tabExt()),
         comp.ws.of(wsExt()),
         comp.ac.of(acExt()),
+        comp.phrases.of(cmPhrases()),
         CM.EditorView.contentAttributes.of({ autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' }),
         CM.EditorView.updateListener.of((u) => onViewUpdate(u, d)),
         CM.EditorView.domEventHandlers({ focus: (_e, v) => { setFocus(paneOfView.get(v)); } }),
@@ -490,7 +426,10 @@ function onViewUpdate(u, d) {
       // Otras ventanas.
       bc.postMessage({ type: 'changes', docId: d.rec.id, changes: tr.changes.toJSON(), len: tr.startState.doc.length, from: WID });
     }
-    if (local) schedulePersist(d);
+    if (local) {
+      schedulePersist(d);
+      runner?.onDocChanged(d.rec.id, d.rec.lang);
+    }
     scheduleDirty(d);
   }
   if ((u.selectionSet || u.docChanged || u.focusChanged) && u.view === activeView()) updateStatus();
@@ -536,19 +475,20 @@ function paneEl(pane) {
   if (p) return p;
   const paneId = pane.id;
   const tabs = el('div', { class: 'tabs', role: 'tablist' });
-  const menuBtn = el('button', { class: 'icon-btn small', title: 'Opciones del panel', 'aria-label': 'Opciones del panel' }, icon('M12 5.5v.01 M12 12v.01 M12 18.5v.01'));
+  const menuBtn = el('button', { class: 'icon-btn small', 'data-i18n-title': 'pane.options', 'data-i18n-aria-label': 'pane.options', title: t('pane.options'), 'aria-label': t('pane.options') },
+    icon('M12 5.5v.01 M12 12v.01 M12 18.5v.01'));
   menuBtn.addEventListener('click', () => {
     const r = menuBtn.getBoundingClientRect();
     showMenu(paneMenuItems(paneId), { x: r.right - 240, y: r.bottom + 4 });
   });
   const editors = el('div', { class: 'editors' });
   const empty = el('div', { class: 'empty-pane' },
-    el('div', { text: 'Panel vacío' }),
+    el('div', { 'data-i18n': 'pane.empty', text: t('pane.empty') }),
     el('div', { class: 'row' },
-      el('button', { class: 'btn primary', text: 'Nuevo', onclick: () => { setFocus(paneId); cmds.new(); } }),
-      el('button', { class: 'btn', text: 'Abrir…', onclick: () => { setFocus(paneId); cmds.open(); } }),
-      el('button', { class: 'btn', text: 'Documentos', onclick: () => { setFocus(paneId); toggleSidebar(true); } })),
-    el('div', { text: isTouch() ? 'Usa el menú ⋮ de cada pestaña para moverla aquí.' : 'También puedes arrastrar pestañas o archivos a este panel.' }));
+      el('button', { class: 'btn primary', 'data-i18n': 'cmd.new', text: t('cmd.new'), onclick: () => { setFocus(paneId); cmds.new(); } }),
+      el('button', { class: 'btn', 'data-i18n': 'cmd.openShort', text: t('cmd.openShort'), onclick: () => { setFocus(paneId); cmds.open(); } }),
+      el('button', { class: 'btn', 'data-i18n': 'pane.documents', text: t('pane.documents'), onclick: () => { setFocus(paneId); toggleSidebar(true); } })),
+    el('div', { 'data-i18n': isTouch() ? 'pane.hintTouch' : 'pane.hintMouse', text: t(isTouch() ? 'pane.hintTouch' : 'pane.hintMouse') }));
   editors.append(empty);
   const root = el('section', { class: 'pane', dataset: { pane: paneId } },
     el('div', { class: 'tabbar' }, tabs, el('div', { class: 'pane-tools' }, menuBtn)),
@@ -674,13 +614,13 @@ let lastLongPress = 0;
 function makeTab(paneId, d) {
   const id = d.rec.id;
   const pane = getPane(paneId);
-  const close = el('button', { class: 'x', title: 'Cerrar', 'aria-label': 'Cerrar pestaña', draggable: 'false' }, el('span', { text: '×' }));
+  const close = el('button', { class: 'x', title: t('tab.close'), 'aria-label': t('tab.close'), draggable: 'false' }, el('span', { text: '×' }));
   close.addEventListener('click', (e) => { e.stopPropagation(); closeTab(paneId, id); });
   const tab = el('div', {
     class: 'tab' + (pane.active === id ? ' active' : '') + (d.dirty ? ' dirty' : ''),
     role: 'tab',
     draggable: 'true',
-    title: d.rec.name + (d.rec.handle ? '' : ' · sin archivo en disco'),
+    title: `${d.rec.name} · ${langLabel(d.rec.lang)}${d.rec.handle ? '' : ' · ' + t('tab.noFile')}`,
     dataset: { doc: id },
   }, el('span', { class: 'label', text: d.rec.name }), close);
 
@@ -733,7 +673,7 @@ function activateTab(paneId, docId, focusEditor = true) {
 async function openDocInPane(docId, paneId = focusedPane().id, { index = null, activate = true } = {}) {
   const pane = getPane(paneId);
   const d = await loadDoc(docId);
-  if (!d || !pane) { toast('Ese documento ya no existe en el espacio de trabajo.'); return false; }
+  if (!d || !pane) { toast(t('err.docGone')); return false; }
   if (d.stale) await refreshRec(d);
   if (!pane.tabs.includes(docId)) {
     if (index != null) pane.tabs.splice(index, 0, docId);
@@ -767,7 +707,7 @@ function closeTab(paneId, docId, { keepPane = false } = {}) {
   const i = pane.tabs.indexOf(docId);
   if (i < 0) return;
   const d = docs.get(docId);
-  const wasEmptyUntitled = d && !d.rec.handle && getText(d) === '' && /^nuevo \d+$/.test(d.rec.name);
+  const wasEmptyUntitled = d && !d.rec.handle && getText(d) === '' && UNTITLED_RE.test(d.rec.name);
   pane.tabs.splice(i, 1);
   if (pane.active === docId) pane.active = pane.tabs[i] ?? pane.tabs[i - 1] ?? null;
   destroyView(docId, paneId);
@@ -807,7 +747,7 @@ function closeAllInPane(paneId) {
 
 function addPane(afterId, dir) {
   if (layout.panes.length >= 4) {
-    toast('Hasta 4 paneles por ventana. Para más, abre otra ventana.');
+    toast(t('err.maxPanes'));
     return null;
   }
   if (dir) layout.dir = dir;
@@ -896,13 +836,13 @@ async function cloneToOtherPane(paneId, docId) {
 function setupDropTarget(tabsEl, editorsEl, paneId) {
   const accepts = (e) => e.dataTransfer && (e.dataTransfer.types.includes(TAB_MIME) || e.dataTransfer.types.includes('Files'));
   const clearMarks = () => {
-    tabsEl.querySelectorAll('.drop-before').forEach((t) => t.classList.remove('drop-before'));
+    tabsEl.querySelectorAll('.drop-before').forEach((x) => x.classList.remove('drop-before'));
     editorsEl.classList.remove('drop-target');
   };
   const indexAt = (e) => {
     const tabs = [...tabsEl.querySelectorAll('.tab')];
-    const i = tabs.findIndex((t) => {
-      const r = t.getBoundingClientRect();
+    const i = tabs.findIndex((x) => {
+      const r = x.getBoundingClientRect();
       return e.clientX < r.left + r.width / 2;
     });
     return i < 0 ? tabs.length : i;
@@ -922,8 +862,8 @@ function setupDropTarget(tabsEl, editorsEl, paneId) {
     clearMarks();
     editorsEl.classList.add('drop-target');
   });
-  for (const t of [tabsEl, editorsEl]) {
-    t.addEventListener('dragleave', (e) => { if (!t.contains(e.relatedTarget)) clearMarks(); });
+  for (const target of [tabsEl, editorsEl]) {
+    target.addEventListener('dragleave', (e) => { if (!target.contains(e.relatedTarget)) clearMarks(); });
   }
   tabsEl.addEventListener('drop', (e) => { if (accepts(e)) { e.preventDefault(); clearMarks(); handleDrop(e, paneId, indexAt(e)); } });
   editorsEl.addEventListener('drop', (e) => { if (accepts(e)) { e.preventDefault(); clearMarks(); handleDrop(e, paneId, null); } });
@@ -982,12 +922,12 @@ async function findDocByHandle(handle) {
 
 async function openFileObject(file, handle, paneId) {
   if (file.size > 8 * 1024 * 1024) {
-    const ok = await confirmModal({ title: 'Archivo grande', text: `${file.name} pesa ${(file.size / 1048576).toFixed(1)} MB. Puede ir lento.`, buttons: ['Cancelar', 'Abrir igual'] });
+    const ok = await confirmModal({ title: t('file.bigTitle'), text: t('file.bigText', { name: file.name, mb: (file.size / 1048576).toFixed(1) }), buttons: [t('ui.cancel'), t('file.openAnyway')] });
     if (!ok) return;
   }
   const text = await file.text();
   if (/\u0000/.test(text.slice(0, 4000))) {
-    toast(`${file.name} parece un archivo binario; no se abre.`);
+    toast(t('file.binary', { name: file.name }));
     return;
   }
   const rec = await createDoc({ name: file.name, content: text, savedContent: text, handle });
@@ -1053,11 +993,11 @@ async function saveDoc(d, { as = false } = {}) {
       if (await verifyPermission(d.rec.handle, true)) {
         await writeToHandle(d.rec.handle, out);
         await markSaved(d, text);
-        toast(`Guardado: ${d.rec.name}`, { timeout: 1800 });
+        toast(t('file.saved', { name: d.rec.name }), { timeout: 1800 });
         return true;
       }
     } catch (err) {
-      toast(`No se pudo escribir ${d.rec.name}: ${err.message}. Prueba "Guardar como".`);
+      toast(t('file.writeFail', { name: d.rec.name, msg: err.message }));
       return false;
     }
   }
@@ -1094,7 +1034,7 @@ async function saveDoc(d, { as = false } = {}) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
   await markSaved(d, text);
-  toast(`Descargado: ${d.rec.name}`, { timeout: 2500 });
+  toast(t('file.downloaded', { name: d.rec.name }), { timeout: 2500 });
   return true;
 }
 
@@ -1106,19 +1046,17 @@ async function saveAll() {
     if (d.rec.handle && await saveDoc(d)) saved++;
     else pending++;
   }
-  toast(pending
-    ? `Guardados ${saved}. ${pending} no tienen archivo en disco: usa "Guardar como" en cada uno.`
-    : `Guardados ${saved} archivo(s).`);
+  toast(pending ? t('file.saveAllPartial', { saved, pending }) : t('file.saveAllDone', { saved }));
 }
 
-async function newDoc(paneId) {
-  const rec = await createDoc({ name: await nextUntitledName() });
+async function newDoc(paneId, lang) {
+  const rec = await createDoc({ name: await nextUntitledName(), lang });
   await openDocInPane(rec.id, paneId || focusedPane().id);
 }
 
 async function renameDoc(d) {
   if (!d) return;
-  const name = await promptModal({ title: 'Renombrar', value: d.rec.name, okLabel: 'Renombrar' });
+  const name = await promptModal({ title: t('doc.renameTitle'), value: d.rec.name, okLabel: t('doc.renameOk') });
   if (!name || name === d.rec.name) return;
   if (d.rec.handle) {
     if (d.rec.handle.move) {
@@ -1126,10 +1064,10 @@ async function renameDoc(d) {
         await verifyPermission(d.rec.handle, true);
         await d.rec.handle.move(name);
       } catch (err) {
-        toast('El archivo en disco conserva su nombre (' + err.message + '). Usa "Guardar como" si quieres otro archivo.');
+        toast(t('doc.renameDiskFail', { msg: err.message }));
       }
     } else {
-      toast('Se renombró la pestaña. El archivo en disco conserva su nombre; usa "Guardar como" para crear otro.');
+      toast(t('doc.renameTabOnly'));
     }
   }
   const oldDetected = detectLang(d.rec.name);
@@ -1145,6 +1083,7 @@ function setDocLang(d, lang, save = true) {
   d.rec.lang = lang;
   for (const v of d.views.values()) v.dispatch({ effects: comp.lang.reconfigure(langExtension(lang)) });
   if (save) { persist(d); broadcastMeta(d, ['lang']); }
+  rerenderTabsFor(d.rec.id);
   updateStatus();
 }
 
@@ -1174,7 +1113,7 @@ async function addFolder(handle) {
 
 async function openFolder() {
   if (!window.showDirectoryPicker) {
-    toast('Este navegador no permite abrir carpetas completas. Usa Archivo → Abrir para elegir archivos.');
+    toast(t('folder.unsupported'));
     return;
   }
   try {
@@ -1186,13 +1125,14 @@ async function openFolder() {
 
 async function renderTree() {
   const root = $('#folderTree');
+  if (!root || $('#sidebar').hidden) return;
   root.textContent = '';
   if (!folders.length) {
-    root.append(el('div', { class: 'tree-empty', text: window.showDirectoryPicker ? 'Ninguna carpeta abierta.' : 'Abrir carpetas requiere Chrome o Edge de escritorio.' }));
+    root.append(el('div', { class: 'tree-empty', text: window.showDirectoryPicker ? t('folder.none') : t('folder.needChrome') }));
     return;
   }
   for (const f of folders) {
-    const remove = el('button', { class: 'icon-btn small', title: 'Quitar carpeta de la lista', 'aria-label': 'Quitar carpeta' }, icon('M6 6l12 12 M18 6L6 18'));
+    const remove = el('button', { class: 'icon-btn small', title: t('folder.remove'), 'aria-label': t('folder.remove') }, icon('M6 6l12 12 M18 6L6 18'));
     remove.addEventListener('click', async (e) => {
       e.stopPropagation();
       folders = folders.filter((x) => x !== f);
@@ -1204,7 +1144,7 @@ async function renderTree() {
     node.addEventListener('click', async () => {
       if (expanded.has(f.id)) expanded.delete(f.id);
       else {
-        if (!(await verifyPermission(f.handle, false).catch(() => false))) { toast('Sin permiso para leer la carpeta.'); return; }
+        if (!(await verifyPermission(f.handle, false).catch(() => false))) { toast(t('folder.noPermission')); return; }
         expanded.add(f.id);
       }
       renderTree();
@@ -1215,7 +1155,7 @@ async function renderTree() {
       root.append(box);
       renderDir(f.handle, box, 1, f.id).catch(() => {
         box.textContent = '';
-        box.append(el('div', { class: 'tree-item file', style: 'padding-left:28px', text: 'Toca la carpeta para dar permiso' }));
+        box.append(el('div', { class: 'tree-item file', style: 'padding-left:28px', text: t('folder.tapToAllow') }));
         expanded.delete(f.id);
       });
     }
@@ -1223,7 +1163,7 @@ async function renderTree() {
 }
 
 async function renderDir(dirHandle, container, depth, key) {
-  if ((await dirHandle.queryPermission?.({ mode: 'read' })) === 'prompt') throw new Error('permiso');
+  if ((await dirHandle.queryPermission?.({ mode: 'read' })) === 'prompt') throw new Error('permission');
   const entries = [];
   for await (const [name, h] of dirHandle.entries()) entries.push([name, h]);
   entries.sort((a, b) => (a[1].kind === b[1].kind ? a[0].localeCompare(b[0]) : a[1].kind === 'directory' ? -1 : 1));
@@ -1259,16 +1199,16 @@ const refreshDocList = debounce(async () => {
   const list = $('#docList');
   list.textContent = '';
   if (!all.length) {
-    list.append(el('div', { class: 'tree-empty', text: 'No hay documentos.' }));
+    list.append(el('div', { class: 'tree-empty', text: t('docs.none') }));
     return;
   }
   for (const r of all) {
     const live = docs.get(r.id);
     const content = live ? getText(live) : r.content;
     const dirty = content !== (r.savedContent ?? '');
-    const del = el('button', { class: 'del', title: 'Quitar del espacio de trabajo', 'aria-label': 'Quitar del espacio' }, '×');
+    const del = el('button', { class: 'del', title: t('docs.remove'), 'aria-label': t('docs.remove') }, '×');
     del.addEventListener('click', (e) => { e.stopPropagation(); deleteFromWorkspace(r.id, r.name, dirty); });
-    const item = el('div', { class: 'doc-item', title: r.name + (r.handle ? '' : ' · solo en el espacio de trabajo') },
+    const item = el('div', { class: 'doc-item', title: r.name + (r.handle ? '' : ' · ' + t('docs.onlyWorkspace')) },
       el('span', { class: 'open-dot' + (isOpenAnywhere(r.id) ? '' : ' off') }),
       el('span', { class: 'name' }, dirty ? el('span', { class: 'dirty-mark', text: '● ' }) : null, r.name),
       del);
@@ -1282,11 +1222,9 @@ const refreshDocList = debounce(async () => {
 
 async function deleteFromWorkspace(id, name, dirty) {
   const choice = await confirmModal({
-    title: `Quitar "${name}"`,
-    text: dirty
-      ? 'Tiene cambios que no se guardaron en un archivo. Si lo quitas, esos cambios se pierden. El archivo en disco (si existe) no se toca.'
-      : 'Se cierra en todas las ventanas. El archivo en disco (si existe) no se toca.',
-    buttons: ['Cancelar', 'Quitar'],
+    title: t('docs.removeTitle', { name }),
+    text: dirty ? t('docs.removeDirty') : t('docs.removeClean'),
+    buttons: [t('ui.cancel'), t('docs.removeOk')],
   });
   if (!choice) return;
   closeDocEverywhereLocal(id);
@@ -1312,56 +1250,70 @@ function toggleSidebar(force) {
 
 /* ------------------------------------------------------------------ varias ventanas y pantallas */
 
-function newWindow({ docId = null } = {}) {
+function openPopup(url, name) {
+  const w = Math.min(1200, screen.availWidth - 40);
+  const h = Math.min(850, screen.availHeight - 40);
+  const win = window.open(url, name, `popup,width=${w},height=${h},left=${(window.screenX || 0) + 40},top=${(window.screenY || 0) + 40}`);
+  if (!win) toast(t('win.blocked'));
+  return win;
+}
+
+// La ventana se abre primero (mientras el clic todavía cuenta) y después se mueve a la otra pantalla.
+async function moveToOtherScreen(win) {
+  if (!('getScreenDetails' in window)) {
+    toast(t('win.noScreenApi'));
+    return;
+  }
+  try {
+    const details = await window.getScreenDetails();
+    const target = details.screens.find((s) => s !== details.currentScreen);
+    if (!target) { toast(t('win.oneScreen')); return; }
+    win.moveTo(target.availLeft, target.availTop);
+    win.resizeTo(target.availWidth, target.availHeight);
+  } catch {
+    toast(t('win.noScreenPermission'));
+  }
+}
+
+async function openWindowUrl(url, name, otherScreen) {
+  const win = openPopup(url, name);
+  if (win && otherScreen) await moveToOtherScreen(win);
+  return win;
+}
+
+function editorWindowUrl(docId) {
   const wid = 'w' + uid();
   const url = new URL(location.href);
   url.search = '';
   url.searchParams.set('w', wid);
   if (docId) url.searchParams.set('doc', docId);
-  const w = Math.min(1200, screen.availWidth - 40);
-  const h = Math.min(850, screen.availHeight - 40);
-  const win = window.open(url.toString(), wid, `popup,width=${w},height=${h},left=${(window.screenX || 0) + 40},top=${(window.screenY || 0) + 40}`);
-  if (!win) toast('El navegador bloqueó la ventana nueva. Permite ventanas emergentes para este sitio.');
-  return win;
+  return { url: url.toString(), wid };
+}
+
+function newWindow({ docId = null } = {}) {
+  const { url, wid } = editorWindowUrl(docId);
+  return openPopup(url, wid);
 }
 
 async function newWindowOnOtherScreen({ docId = null } = {}) {
-  // La ventana se abre primero (mientras el clic todavía cuenta) y después se mueve.
-  const win = newWindow({ docId });
-  if (!win) return null;
-  if (!('getScreenDetails' in window)) {
-    toast('Este navegador no permite elegir la pantalla. Arrastra la ventana nueva al otro monitor.');
-    return win;
-  }
-  try {
-    const details = await window.getScreenDetails();
-    const target = details.screens.find((s) => s !== details.currentScreen);
-    if (!target) {
-      toast('Solo se detecta una pantalla.');
-      return win;
-    }
-    win.moveTo(target.availLeft, target.availTop);
-    win.resizeTo(target.availWidth, target.availHeight);
-  } catch {
-    toast('Sin permiso de administración de ventanas. Arrastra la ventana nueva al otro monitor.');
-  }
-  return win;
+  const { url, wid } = editorWindowUrl(docId);
+  return openWindowUrl(url, wid, true);
 }
 
 async function sendTabToWindow(paneId, docId) {
   const others = livePeers();
   const items = [
-    ...others.map((p) => ({ label: p.name, hint: 'abierta', value: { wid: p.wid } })),
-    { label: 'Ventana nueva', value: { new: true } },
-    { label: 'Ventana nueva en otra pantalla', value: { screen: true } },
+    ...others.map((p) => ({ label: p.name, hint: t('win.open'), value: { wid: p.wid } })),
+    { label: t('cmd.newWindow'), value: { new: true } },
+    { label: t('cmd.otherScreen'), value: { screen: true } },
   ];
-  const choice = await pickModal({ title: 'Enviar pestaña a…', items });
+  const choice = await pickModal({ title: t('win.sendTitle'), items });
   if (!choice) return;
   await flushAll();
   if (choice.wid) {
     bc.postMessage({ type: 'open-doc', target: choice.wid, docId, from: WID });
     closeTab(paneId, docId);
-    toast(`Enviada a ${winName(choice.wid)}`, { timeout: 2000 });
+    toast(t('win.sent', { name: winName(choice.wid) }), { timeout: 2000 });
   } else {
     const win = choice.screen ? await newWindowOnOtherScreen({ docId }) : newWindow({ docId });
     if (win) closeTab(paneId, docId);
@@ -1384,16 +1336,16 @@ async function reopenSavedWindow() {
     if (live.has(wid)) continue;
     const l = layoutOf(wid);
     const count = l?.panes?.reduce((n, p) => n + p.tabs.length, 0) || 0;
-    items.push({ label: winName(wid), hint: `${count} pestaña(s)`, value: wid, saved: l?.saved || 0 });
+    items.push({ label: winName(wid), hint: t('win.tabCount', { n: count }), value: wid, saved: l?.saved || 0 });
   }
   items.sort((a, b) => b.saved - a.saved);
-  if (!items.length) { toast('No hay ventanas cerradas para reabrir.'); return; }
-  const wid = await pickModal({ title: 'Reabrir ventana', items });
+  if (!items.length) { toast(t('win.noneClosed')); return; }
+  const wid = await pickModal({ title: t('win.reopenTitle'), items });
   if (!wid) return;
   const url = new URL(location.href);
   url.search = '';
   url.searchParams.set('w', wid);
-  if (!window.open(url.toString(), wid, 'popup,width=1200,height=850')) toast('El navegador bloqueó la ventana. Permite ventanas emergentes.');
+  openPopup(url.toString(), wid);
 }
 
 /* ------------------------------------------------------------------ mensajes entre ventanas */
@@ -1409,7 +1361,7 @@ bc.addEventListener('message', async (e) => {
       if (m.wid === WID) break;
       {
         const isNew = !peers.has(m.wid);
-        peers.set(m.wid, { name: m.name, seen: Date.now() });
+        peers.set(m.wid, { seen: Date.now() });
         if (isNew && !m.reply) announce(true);
         if (isNew) refreshDocList();
       }
@@ -1428,7 +1380,7 @@ bc.addEventListener('message', async (e) => {
       const any = d.views.values().next().value;
       if (!any) { d.stale = true; break; }
       if (any.state.doc.length !== m.len) {
-        // Se desincronizó (dos personas escribiendo a la vez): se recarga del almacenamiento.
+        // Se desincronizó (escritura simultánea en dos ventanas): se recarga del almacenamiento.
         setTimeout(async () => {
           const rec = await db.getDoc(m.docId);
           if (!rec) return;
@@ -1440,6 +1392,7 @@ bc.addEventListener('message', async (e) => {
       }
       const cs = CM.ChangeSet.fromJSON(m.changes);
       for (const v of d.views.values()) v.dispatch({ changes: cs, annotations: [Remote.of(true), CM.Transaction.addToHistory.of(false)] });
+      runner?.onDocChanged(d.rec.id, d.rec.lang);
       break;
     }
     case 'meta': {
@@ -1461,7 +1414,7 @@ bc.addEventListener('message', async (e) => {
     case 'open-doc':
       if (m.target === WID) {
         await showDoc(m.docId);
-        toast(`Recibida desde ${winName(m.from)}`, { timeout: 2000 });
+        toast(t('win.received', { name: winName(m.from) }), { timeout: 2000 });
       }
       break;
     case 'tab-taken':
@@ -1504,18 +1457,42 @@ const runCM = (command) => () => {
   if (v) { command(v); v.focus(); }
 };
 
+// Dónde se ejecuta cada lenguaje, para la tabla de Ayuda y el menú Lenguaje.
+function runWhere(lang) {
+  const sample = langById(lang).ext[0] || '';
+  const kind = runKind(lang, 'x.' + sample);
+  if (lang === 'xml') return t('where.svg');
+  return {
+    web: t('where.web'), markdown: t('where.markdown'), js: t('where.js'), python: t('where.python'),
+    sql: t('where.sql'), json: t('where.json'), remote: t('where.remote'),
+  }[kind] || t('where.none');
+}
+
 async function pickLanguage() {
   const d = activeDoc();
-  if (!d) return;
+  if (!d) { toast(t('lang.needDoc')); return; }
   const lang = await pickModal({
-    title: 'Lenguaje del documento',
-    items: LANGS.map((l) => ({ label: l.label, hint: l.id === d.rec.lang ? 'actual' : l.ext.slice(0, 3).map((x) => '.' + x).join(' '), value: l.id })),
+    title: t('lang.pickTitle', { name: d.rec.name }),
+    items: LANGS.map((l) => ({ label: langLabel(l.id), hint: l.ext.slice(0, 3).map((x) => '.' + x).join(' '), value: l.id, current: l.id === d.rec.lang })),
   });
   if (lang) setDocLang(d, lang);
 }
 
+function showLanguagesTable() {
+  const rows = LANGS.map((l) => el('tr', {},
+    el('td', { text: langLabel(l.id) }),
+    el('td', { class: 'mono', text: l.ext.slice(0, 4).map((x) => '.' + x).join(' ') }),
+    el('td', { text: runWhere(l.id) })));
+  infoModal(t('lang.tableTitle'),
+    el('p', { text: t('lang.tableIntro') }),
+    el('div', { class: 'table-wrap' }, el('table', { class: 'info-table' },
+      el('thead', {}, el('tr', {}, el('th', { text: t('lang.colLang') }), el('th', { text: t('lang.colExt') }), el('th', { text: t('lang.colRun') }))),
+      el('tbody', {}, rows))),
+    el('p', { text: t('lang.tableNote') }));
+}
+
 async function pickTabSize() {
-  const size = await pickModal({ title: 'Tamaño de la tabulación (espacios)', items: [2, 4, 8].map((n) => ({ label: `${n} espacios`, hint: n === settings.tabSize ? 'actual' : '', value: n })) });
+  const size = await pickModal({ title: t('tabsize.title'), items: [2, 4, 8].map((n) => ({ label: t('tabsize.n', { n }), value: n, current: n === settings.tabSize })) });
   if (size) { settings.tabSize = size; saveSettings(); }
 }
 
@@ -1526,7 +1503,7 @@ function toggleEol() {
   persist(d);
   broadcastMeta(d, ['eol']);
   updateStatus();
-  toast(`Fin de línea: ${d.rec.eol}. Se aplica al guardar.`, { timeout: 2200 });
+  toast(t('eol.changed', { eol: d.rec.eol }), { timeout: 2200 });
 }
 
 function zoom(delta) {
@@ -1534,36 +1511,59 @@ function zoom(delta) {
   saveSettings();
 }
 
+function setUiLang(lang) {
+  settings.uiLang = lang;
+  saveSettings();
+}
+
+async function configureServer() {
+  const form = el('form', { class: 'modal wide' });
+  const urlInput = el('input', { type: 'text', value: settings.judgeUrl, placeholder: 'https://ce.judge0.com', spellcheck: 'false', autocomplete: 'off' });
+  const keyInput = el('input', { type: 'text', value: settings.judgeKey, placeholder: t('server.keyPlaceholder'), spellcheck: 'false', autocomplete: 'off' });
+  let close;
+  form.append(
+    el('h2', { text: t('server.title') }),
+    el('p', { text: t('server.intro') }),
+    el('label', { class: 'field-label', text: t('server.url') }), urlInput,
+    el('label', { class: 'field-label', text: t('server.key') }), keyInput,
+    el('p', { class: 'small', text: t('server.note') }),
+    el('div', { class: 'actions' },
+      el('button', { type: 'button', class: 'btn', text: t('server.reset'), onclick: () => { urlInput.value = DEFAULTS.judgeUrl; keyInput.value = ''; } }),
+      el('button', { type: 'button', class: 'btn', text: t('ui.cancel'), onclick: () => close() }),
+      el('button', { type: 'submit', class: 'btn primary', text: t('ui.save') })));
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    settings.judgeUrl = urlInput.value.trim();
+    settings.judgeKey = keyInput.value.trim();
+    saveSettings();
+    close();
+    toast(t('server.saved'), { timeout: 2000 });
+  });
+  form.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  close = openModal(form);
+  urlInput.focus();
+}
+
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; });
 
 function showShortcuts() {
   const rows = [
-    ['Nuevo documento', 'Alt+N'], ['Abrir archivos', 'Ctrl+O'], ['Guardar / Guardar como', 'Ctrl+S / Ctrl+Shift+S'],
-    ['Cerrar pestaña', 'Alt+W'], ['Pestaña siguiente / anterior', 'Ctrl+Tab / Ctrl+Shift+Tab'], ['Ir a la pestaña N', 'Alt+1 … Alt+9'],
-    ['Buscar / Reemplazar', 'Ctrl+F / Ctrl+H'], ['Ir a línea', 'Ctrl+G'], ['Comentar línea', 'Ctrl+/'],
-    ['Duplicar línea', 'Shift+Alt+↓'], ['Mover línea', 'Alt+↑ / Alt+↓'], ['Selección múltiple', 'Ctrl+D (siguiente coincidencia)'],
-    ['Dividir panel', 'Ctrl+\\'], ['Mover pestaña al otro panel', 'Alt+M'], ['Ventana nueva', 'Alt+Shift+N'],
-    ['Panel lateral', 'Ctrl+B'], ['Tamaño de letra', 'Ctrl+= / Ctrl+- / Ctrl+0'], ['Ajuste de línea', 'Alt+Z'],
+    ['sc.new', 'Alt+N'], ['sc.open', 'Ctrl+O'], ['sc.save', 'Ctrl+S / Ctrl+Shift+S'],
+    ['sc.close', 'Alt+W'], ['sc.nextTab', 'Ctrl+Tab / Ctrl+Shift+Tab'], ['sc.tabN', 'Alt+1 … Alt+9'],
+    ['sc.run', 'F5 / Ctrl+Enter'], ['sc.stop', 'Shift+F5'], ['sc.runPanel', 'Ctrl+Shift+P'],
+    ['sc.find', 'Ctrl+F / Ctrl+H'], ['sc.goto', 'Ctrl+G'], ['sc.comment', 'Ctrl+/'],
+    ['sc.dupLine', 'Shift+Alt+↓'], ['sc.moveLine', 'Alt+↑ / Alt+↓'], ['sc.multi', 'Ctrl+D'],
+    ['sc.split', 'Ctrl+\\'], ['sc.moveTab', 'Alt+M'], ['sc.newWindow', 'Alt+Shift+N'],
+    ['sc.sidebar', 'Ctrl+B'], ['sc.zoom', 'Ctrl+= / Ctrl+- / Ctrl+0'], ['sc.wrap', 'Alt+Z'], ['sc.language', 'Alt+L'],
   ];
-  const box = el('div', { class: 'modal' },
-    el('h2', { text: 'Atajos de teclado' }),
-    el('p', { text: 'En Mac usa Cmd en lugar de Ctrl. Dentro de una pestaña normal del navegador, Ctrl+N y Ctrl+W los toma el navegador; por eso los atajos usan Alt.' }),
-    el('div', { class: 'pick-list' }, rows.map(([a, b]) => el('div', { class: 'pick-item' }, el('span', { text: a }), el('span', { class: 'hint', text: b })))),
-    el('div', { class: 'actions' }, el('button', { class: 'btn primary', text: 'Cerrar', onclick: () => close() })));
-  const close = openModal(box);
-  $('#modalLayer').onclick = (e) => { if (e.target.id === 'modalLayer') close(); };
-  box.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  infoModal(t('sc.title'),
+    el('p', { text: t('sc.intro') }),
+    el('div', { class: 'pick-list' }, rows.map(([k, b]) => el('div', { class: 'pick-item' }, el('span', { text: t(k) }), el('span', { class: 'hint', text: b })))));
 }
 
 function showAbout() {
-  const box = el('div', { class: 'modal' },
-    el('h2', { text: 'MultiPad' }),
-    el('p', { text: 'Editor de código para computadora, tablet y celular. Los documentos se guardan en este navegador (espacio de trabajo) y, cuando el navegador lo permite, directamente en tus archivos.' }),
-    el('p', { text: 'Motor de edición: CodeMirror 6 (licencia MIT).' }),
-    el('div', { class: 'actions' }, el('button', { class: 'btn primary', text: 'Cerrar', onclick: () => close() })));
-  const close = openModal(box);
-  $('#modalLayer').onclick = (e) => { if (e.target.id === 'modalLayer') close(); };
+  infoModal('MultiPad', el('p', { text: t('about.text') }), el('p', { text: t('about.credits') }));
 }
 
 const cmds = {
@@ -1596,11 +1596,12 @@ const cmds = {
   comment: runCM(CM.toggleComment),
   duplicateLine: runCM(CM.copyLineDown),
   deleteLine: runCM(CM.deleteLine),
-  upper: () => transformSelection((t) => t.toUpperCase()),
-  lower: () => transformSelection((t) => t.toLowerCase()),
+  upper: () => transformSelection((s) => s.toUpperCase()),
+  lower: () => transformSelection((s) => s.toLowerCase()),
   sortLines: () => linesOperation((lines) => [...lines].sort((a, b) => a.localeCompare(b))),
   trimTrailing: () => linesOperation((lines) => lines.map((l) => l.replace(/[ \t]+$/, ''))),
   language: () => pickLanguage(),
+  languagesTable: () => showLanguagesTable(),
   tabSize: () => pickTabSize(),
   eol: () => toggleEol(),
   wrap: () => { settings.wrap = !settings.wrap; saveSettings(); },
@@ -1611,10 +1612,18 @@ const cmds = {
     settings.mobileKeys = showing ? 'off' : 'on';
     saveSettings();
   },
-  theme: (t) => { settings.theme = t; saveSettings(); },
+  theme: (th) => { settings.theme = th; saveSettings(); },
   zoomIn: () => zoom(1),
   zoomOut: () => zoom(-1),
   zoomReset: () => zoom(0),
+  uiLang: () => setUiLang(getLang() === 'es' ? 'en' : 'es'),
+  run: () => runner.run(),
+  stop: () => runner.stop(),
+  runPanel: () => runner.toggle(),
+  previewWindow: () => runner.popout(false),
+  previewScreen: () => runner.popout(true),
+  runAuto: () => { const st = layout.run; st.auto = !st.auto; saveLayout(); runner.layout(); },
+  server: () => configureServer(),
   install: async () => { if (installPrompt) { installPrompt.prompt(); installPrompt = null; } },
   shortcuts: () => showShortcuts(),
   about: () => showAbout(),
@@ -1625,19 +1634,20 @@ const cmds = {
 function tabMenuItems(paneId, docId) {
   const d = docs.get(docId);
   return [
-    { label: 'Cerrar', kbd: 'Alt+W', action: () => closeTab(paneId, docId) },
-    { label: 'Cerrar las demás', action: () => closeOthers(paneId, docId) },
+    { label: t('tab.close'), kbd: 'Alt+W', action: () => closeTab(paneId, docId) },
+    { label: t('tab.closeOthers'), action: () => closeOthers(paneId, docId) },
     'sep',
-    { label: 'Mover al otro panel', kbd: 'Alt+M', action: () => moveToOtherPane(paneId, docId) },
-    { label: 'Clonar en el otro panel', action: () => cloneToOtherPane(paneId, docId) },
+    { label: t('tab.moveOther'), kbd: 'Alt+M', action: () => moveToOtherPane(paneId, docId) },
+    { label: t('tab.cloneOther'), action: () => cloneToOtherPane(paneId, docId) },
     'sep',
-    { label: 'Enviar a otra ventana…', action: () => sendTabToWindow(paneId, docId) },
-    { label: 'Abrir en ventana nueva', action: () => openTabInNewWindow(paneId, docId) },
-    { label: 'Abrir en otra pantalla', action: () => openTabInNewWindow(paneId, docId, true) },
+    { label: t('tab.sendWindow'), action: () => sendTabToWindow(paneId, docId) },
+    { label: t('tab.newWindow'), action: () => openTabInNewWindow(paneId, docId) },
+    { label: t('tab.otherScreen'), action: () => openTabInNewWindow(paneId, docId, true) },
     'sep',
-    { label: 'Guardar', action: () => saveDoc(d) },
-    { label: 'Renombrar…', action: () => renameDoc(d) },
-    { label: 'Lenguaje…', action: () => { activateTab(paneId, docId, false); pickLanguage(); } },
+    { label: t('cmd.run'), kbd: 'F5', action: () => { activateTab(paneId, docId, false); runner.run(); } },
+    { label: t('cmd.save'), action: () => saveDoc(d) },
+    { label: t('cmd.rename'), action: () => renameDoc(d) },
+    { label: t('cmd.languageOf', { lang: langLabel(d?.rec.lang || 'text') }), action: () => { activateTab(paneId, docId, false); pickLanguage(); } },
   ];
 }
 
@@ -1648,108 +1658,156 @@ function paneMenuItems(paneId) {
     items.push({ title: docs.get(pane.active)?.rec.name || '' }, ...tabMenuItems(paneId, pane.active), 'sep');
   }
   items.push(
-    { title: 'Panel' },
-    { label: 'Dividir a la derecha', action: () => { setFocus(paneId); cmds.splitRight(); } },
-    { label: 'Dividir abajo', action: () => { setFocus(paneId); cmds.splitDown(); } },
-    { label: 'Cerrar todas las pestañas', disabled: !pane?.tabs.length, action: () => closeAllInPane(paneId) },
-    { label: 'Cerrar panel', disabled: layout.panes.length < 2, action: () => closeAllInPane(paneId) },
+    { title: t('pane.title') },
+    { label: t('cmd.splitRight'), action: () => { setFocus(paneId); cmds.splitRight(); } },
+    { label: t('cmd.splitDown'), action: () => { setFocus(paneId); cmds.splitDown(); } },
+    { label: t('pane.closeAllTabs'), disabled: !pane?.tabs.length, action: () => closeAllInPane(paneId) },
+    { label: t('cmd.closePane'), disabled: layout.panes.length < 2, action: () => closeAllInPane(paneId) },
   );
   return items;
 }
 
 const MENUS = {
-  archivo: () => [
-    { label: 'Nuevo', kbd: 'Alt+N', action: cmds.new },
-    { label: 'Abrir…', kbd: 'Ctrl+O', action: cmds.open },
-    { label: 'Abrir carpeta…', action: cmds.openFolder, disabled: !window.showDirectoryPicker },
+  file: () => [
+    { label: t('cmd.new'), kbd: 'Alt+N', action: cmds.new },
+    { label: t('cmd.open'), kbd: 'Ctrl+O', action: cmds.open },
+    { label: t('cmd.openFolder'), action: cmds.openFolder, disabled: !window.showDirectoryPicker },
     'sep',
-    { label: 'Guardar', kbd: 'Ctrl+S', action: cmds.save, disabled: !activeDoc() },
-    { label: 'Guardar como…', kbd: 'Ctrl+Shift+S', action: cmds.saveAs, disabled: !activeDoc() },
-    { label: 'Guardar todo', action: cmds.saveAll },
+    { label: t('cmd.save'), kbd: 'Ctrl+S', action: cmds.save, disabled: !activeDoc() },
+    { label: t('cmd.saveAs'), kbd: 'Ctrl+Shift+S', action: cmds.saveAs, disabled: !activeDoc() },
+    { label: t('cmd.saveAll'), action: cmds.saveAll },
     'sep',
-    { label: 'Renombrar…', action: cmds.rename, disabled: !activeDoc() },
-    { label: 'Cerrar pestaña', kbd: 'Alt+W', action: cmds.closeTab, disabled: !activeDoc() },
-    { label: 'Cerrar todas', action: cmds.closeAll },
+    { label: t('cmd.rename'), action: cmds.rename, disabled: !activeDoc() },
+    { label: t('cmd.closeTab'), kbd: 'Alt+W', action: cmds.closeTab, disabled: !activeDoc() },
+    { label: t('cmd.closeAll'), action: cmds.closeAll },
     installPrompt ? 'sep' : null,
-    installPrompt ? { label: 'Instalar MultiPad en este dispositivo', action: cmds.install } : null,
+    installPrompt ? { label: t('cmd.install'), action: cmds.install } : null,
   ],
-  editar: () => [
-    { label: 'Deshacer', kbd: 'Ctrl+Z', action: cmds.undo },
-    { label: 'Rehacer', kbd: 'Ctrl+Y', action: cmds.redo },
+  edit: () => [
+    { label: t('cmd.undo'), kbd: 'Ctrl+Z', action: cmds.undo },
+    { label: t('cmd.redo'), kbd: 'Ctrl+Y', action: cmds.redo },
     'sep',
-    { label: 'Buscar y reemplazar', kbd: 'Ctrl+F', action: cmds.find },
-    { label: 'Ir a línea…', kbd: 'Ctrl+G', action: cmds.gotoLine },
+    { label: t('cmd.find'), kbd: 'Ctrl+F', action: cmds.find },
+    { label: t('cmd.goto'), kbd: 'Ctrl+G', action: cmds.gotoLine },
     'sep',
-    { label: 'Comentar / descomentar', kbd: 'Ctrl+/', action: cmds.comment },
-    { label: 'Duplicar línea', kbd: 'Shift+Alt+↓', action: cmds.duplicateLine },
-    { label: 'Borrar línea', kbd: 'Ctrl+Shift+K', action: cmds.deleteLine },
+    { label: t('cmd.comment'), kbd: 'Ctrl+/', action: cmds.comment },
+    { label: t('cmd.dupLine'), kbd: 'Shift+Alt+↓', action: cmds.duplicateLine },
+    { label: t('cmd.delLine'), kbd: 'Ctrl+Shift+K', action: cmds.deleteLine },
     'sep',
-    { label: 'MAYÚSCULAS', action: cmds.upper },
-    { label: 'minúsculas', action: cmds.lower },
-    { label: 'Ordenar líneas', action: cmds.sortLines },
-    { label: 'Quitar espacios al final', action: cmds.trimTrailing },
+    { label: t('cmd.upper'), action: cmds.upper },
+    { label: t('cmd.lower'), action: cmds.lower },
+    { label: t('cmd.sortLines'), action: cmds.sortLines },
+    { label: t('cmd.trim'), action: cmds.trimTrailing },
   ],
-  ver: () => [
-    { label: 'Panel lateral', kbd: 'Ctrl+B', checked: !$('#sidebar').hidden, action: cmds.sidebar },
+  view: () => [
+    { label: t('cmd.sidebar'), kbd: 'Ctrl+B', checked: !$('#sidebar').hidden, action: cmds.sidebar },
+    { label: t('cmd.runPanel'), kbd: 'Ctrl+Shift+P', checked: runner.isOpen(), action: cmds.runPanel },
     'sep',
-    { label: 'Dividir a la derecha', kbd: 'Ctrl+\\', action: cmds.splitRight },
-    { label: 'Dividir abajo', action: cmds.splitDown },
-    { label: 'Paneles en columna', checked: layout.dir === 'column', action: cmds.toggleDir, disabled: layout.panes.length < 2 },
-    { label: 'Mover pestaña al otro panel', kbd: 'Alt+M', action: cmds.moveToOther, disabled: !activeDoc() },
-    { label: 'Clonar pestaña en el otro panel', action: cmds.cloneToOther, disabled: !activeDoc() },
-    { label: 'Cerrar panel', action: cmds.closePane, disabled: layout.panes.length < 2 },
+    { label: t('cmd.splitRight'), kbd: 'Ctrl+\\', action: cmds.splitRight },
+    { label: t('cmd.splitDown'), action: cmds.splitDown },
+    { label: t('cmd.columnPanes'), checked: layout.dir === 'column', action: cmds.toggleDir, disabled: layout.panes.length < 2 },
+    { label: t('cmd.moveOther'), kbd: 'Alt+M', action: cmds.moveToOther, disabled: !activeDoc() },
+    { label: t('cmd.cloneOther'), action: cmds.cloneToOther, disabled: !activeDoc() },
+    { label: t('cmd.closePane'), action: cmds.closePane, disabled: layout.panes.length < 2 },
     'sep',
-    { label: 'Ajuste de línea', kbd: 'Alt+Z', checked: settings.wrap, action: cmds.wrap },
-    { label: 'Mostrar espacios', checked: settings.whitespace, action: cmds.whitespace },
-    { label: 'Autocompletar', checked: settings.autocomplete, action: cmds.autocomplete },
-    { label: 'Teclas táctiles', checked: !$('#mobileKeys').hidden, action: cmds.mobileKeys },
+    { label: t('cmd.wrap'), kbd: 'Alt+Z', checked: settings.wrap, action: cmds.wrap },
+    { label: t('cmd.whitespace'), checked: settings.whitespace, action: cmds.whitespace },
+    { label: t('cmd.autocomplete'), checked: settings.autocomplete, action: cmds.autocomplete },
+    { label: t('cmd.mobileKeys'), checked: !$('#mobileKeys').hidden, action: cmds.mobileKeys },
+    { label: t('cmd.tabSize'), action: cmds.tabSize },
     'sep',
-    { label: 'Tema automático', checked: settings.theme === 'auto', action: () => cmds.theme('auto') },
-    { label: 'Tema oscuro', checked: settings.theme === 'dark', action: () => cmds.theme('dark') },
-    { label: 'Tema claro', checked: settings.theme === 'light', action: () => cmds.theme('light') },
+    { label: t('cmd.themeAuto'), checked: settings.theme === 'auto', action: () => cmds.theme('auto') },
+    { label: t('cmd.themeDark'), checked: settings.theme === 'dark', action: () => cmds.theme('dark') },
+    { label: t('cmd.themeLight'), checked: settings.theme === 'light', action: () => cmds.theme('light') },
     'sep',
-    { label: 'Letra más grande', kbd: 'Ctrl+=', action: cmds.zoomIn },
-    { label: 'Letra más chica', kbd: 'Ctrl+-', action: cmds.zoomOut },
-    { label: `Tamaño normal (${DEFAULTS.fontSize}px)`, kbd: 'Ctrl+0', action: cmds.zoomReset },
+    { label: t('cmd.zoomIn'), kbd: 'Ctrl+=', action: cmds.zoomIn },
+    { label: t('cmd.zoomOut'), kbd: 'Ctrl+-', action: cmds.zoomOut },
+    { label: t('cmd.zoomReset', { n: DEFAULTS.fontSize }), kbd: 'Ctrl+0', action: cmds.zoomReset },
     'sep',
-    { label: 'Lenguaje…', action: cmds.language, disabled: !activeDoc() },
-    { label: 'Tabulación…', action: cmds.tabSize },
+    { title: t('cmd.uiLanguage') },
+    { label: 'Español', checked: getLang() === 'es', action: () => setUiLang('es') },
+    { label: 'English', checked: getLang() === 'en', action: () => setUiLang('en') },
   ],
-  ventana: () => {
+  // Igual que en Notepad++: la lista completa, con el lenguaje del documento activo marcado.
+  language: () => {
+    const d = activeDoc();
+    return [
+      { title: d ? t('lang.menuTitle', { name: d.rec.name }) : t('lang.menuTitleNone') },
+      ...LANGS.map((l) => ({
+        label: langLabel(l.id),
+        kbd: runKind(l.id, 'x.' + (l.ext[0] || '')) ? '▶' : '',
+        checked: d?.rec.lang === l.id,
+        disabled: !d,
+        action: () => setDocLang(d, l.id),
+      })),
+      'sep',
+      { label: t('lang.whatRuns'), action: cmds.languagesTable },
+    ];
+  },
+  run: () => [
+    { label: t('cmd.run'), kbd: 'F5', action: cmds.run, disabled: !activeDoc() },
+    { label: t('cmd.stop'), kbd: 'Shift+F5', action: cmds.stop },
+    'sep',
+    { label: t('cmd.runPanel'), kbd: 'Ctrl+Shift+P', checked: runner.isOpen(), action: cmds.runPanel },
+    { label: t('cmd.runAuto'), checked: !!layout.run.auto, action: cmds.runAuto },
+    { label: t('cmd.previewWindow'), action: cmds.previewWindow },
+    { label: t('cmd.previewScreen'), action: cmds.previewScreen },
+    'sep',
+    { label: t('cmd.server'), action: cmds.server },
+    { label: t('lang.whatRuns'), action: cmds.languagesTable },
+  ],
+  window: () => {
     const others = livePeers();
     return [
-      { label: 'Ventana nueva', kbd: 'Alt+Shift+N', action: cmds.newWindow },
-      { label: 'Ventana nueva en otra pantalla', action: cmds.otherScreen },
-      { label: 'Enviar pestaña a otra ventana…', action: cmds.sendToWindow, disabled: !activeDoc() },
-      { label: 'Reabrir ventana cerrada…', action: cmds.reopenWindow },
+      { label: t('cmd.newWindow'), kbd: 'Alt+Shift+N', action: cmds.newWindow },
+      { label: t('cmd.otherScreen'), action: cmds.otherScreen },
+      { label: t('cmd.sendWindow'), action: cmds.sendToWindow, disabled: !activeDoc() },
+      { label: t('cmd.reopenWindow'), action: cmds.reopenWindow },
       'sep',
-      { label: 'Renombrar esta ventana…', action: cmds.renameWindow },
-      { label: 'Pantalla completa', kbd: 'F11', action: cmds.fullscreen, disabled: !document.documentElement.requestFullscreen },
+      { label: t('cmd.renameWindow'), action: cmds.renameWindow },
+      { label: t('cmd.fullscreen'), kbd: 'F11', action: cmds.fullscreen, disabled: !document.documentElement.requestFullscreen },
       'sep',
-      { title: `Abiertas: ${others.length + 1}` },
-      { label: `${winName()} (esta)`, checked: true, disabled: true },
+      { title: t('win.openCount', { n: others.length + 1 }) },
+      { label: t('win.this', { name: winName() }), checked: true, disabled: true },
       ...others.map((p) => ({ label: p.name, disabled: true })),
     ];
   },
-  ayuda: () => [
-    { label: 'Atajos de teclado', action: cmds.shortcuts },
-    { label: 'Acerca de MultiPad', action: cmds.about },
+  help: () => [
+    { label: t('lang.whatRuns'), action: cmds.languagesTable },
+    { label: t('sc.title'), action: cmds.shortcuts },
+    { label: t('about.menu'), action: cmds.about },
   ],
 };
 
-for (const btn of document.querySelectorAll('.menu-btn')) {
-  const open = () => {
-    const r = btn.getBoundingClientRect();
-    showMenu(MENUS[btn.dataset.menu](), { x: r.left, y: r.bottom + 2 }, btn);
-  };
-  btn.addEventListener('click', () => (openMenuBtn === btn ? closeMenu() : open()));
-  btn.addEventListener('pointerenter', (e) => { if (openMenuBtn && openMenuBtn !== btn && e.pointerType === 'mouse') open(); });
+const MENU_ORDER = ['file', 'edit', 'view', 'language', 'run', 'window', 'help'];
+
+function openTopMenu(btn) {
+  const r = btn.getBoundingClientRect();
+  showMenu(MENUS[btn.dataset.menu](), { x: r.left, y: r.bottom + 2 }, btn);
 }
+
+for (const btn of document.querySelectorAll('.menu-btn[data-menu]')) {
+  btn.addEventListener('click', () => (openMenuBtn === btn ? closeMenu() : openTopMenu(btn)));
+  btn.addEventListener('pointerenter', (e) => { if (openMenuBtn && openMenuBtn !== btn && e.pointerType === 'mouse') openTopMenu(btn); });
+}
+
+// En celulares los menús se agrupan en un solo botón.
+$('#btnMenu').addEventListener('click', () => {
+  const btn = $('#btnMenu');
+  if (openMenuBtn === btn) { closeMenu(); return; }
+  const r = btn.getBoundingClientRect();
+  showMenu(MENU_ORDER.map((key) => ({
+    label: t('menu.' + key) + '  ›',
+    action: () => setTimeout(() => showMenu(MENUS[key](), { x: r.left, y: r.bottom + 2 }), 0),
+  })), { x: r.left, y: r.bottom + 2 }, btn);
+});
 
 for (const btn of document.querySelectorAll('[data-cmd]')) {
   btn.addEventListener('click', () => cmds[btn.dataset.cmd]?.());
 }
 $('#btnSidebar').addEventListener('click', () => cmds.sidebar());
+$('#btnUiLang').addEventListener('click', () => cmds.uiLang());
+$('#langBadge').addEventListener('click', () => cmds.language());
 $('#winLabel').addEventListener('click', () => cmds.renameWindow());
 $('#stLang').addEventListener('click', () => cmds.language());
 $('#stEol').addEventListener('click', () => cmds.eol());
@@ -1762,7 +1820,10 @@ window.addEventListener('keydown', (e) => {
   const mod = e.ctrlKey || e.metaKey;
   const code = e.code;
   let handled = true;
-  if (mod && !e.shiftKey && code === 'KeyS') cmds.save();
+  if (code === 'F5' && e.shiftKey) cmds.stop();
+  else if (code === 'F5' || (mod && code === 'Enter')) cmds.run();
+  else if (mod && e.shiftKey && code === 'KeyP') cmds.runPanel();
+  else if (mod && !e.shiftKey && code === 'KeyS') cmds.save();
   else if (mod && e.shiftKey && code === 'KeyS') cmds.saveAs();
   else if (mod && code === 'KeyO') cmds.open();
   else if (e.altKey && e.shiftKey && code === 'KeyN') cmds.newWindow();
@@ -1774,6 +1835,7 @@ window.addEventListener('keydown', (e) => {
   else if (mod && code === 'KeyH') cmds.find();
   else if (e.altKey && code === 'KeyM') cmds.moveToOther();
   else if (e.altKey && code === 'KeyZ') cmds.wrap();
+  else if (e.altKey && code === 'KeyL') cmds.language();
   else if (mod && (code === 'Equal' || code === 'NumpadAdd')) cmds.zoomIn();
   else if (mod && (code === 'Minus' || code === 'NumpadSubtract')) cmds.zoomOut();
   else if (mod && (code === 'Digit0' || code === 'Numpad0')) cmds.zoomReset();
@@ -1798,8 +1860,10 @@ function cycleTab(dir) {
 $('#mobileKeys').addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
 $('#mobileKeys').addEventListener('click', (e) => {
   const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.key === 'run') { cmds.run(); return; }
   const v = activeView();
-  if (!b || !v) return;
+  if (!v) return;
   if (b.dataset.ins) {
     const ins = b.dataset.ins;
     const pair = ins.length === 2;
@@ -1836,24 +1900,35 @@ function updateTitle() {
 function updateStatus() {
   const v = activeView();
   const d = activeDoc();
-  $('#stIndent').textContent = `Espacios: ${settings.tabSize}`;
+  $('#stIndent').textContent = t('status.spaces', { n: settings.tabSize });
+  const badge = $('#langBadge');
   if (!v || !d) {
     $('#stPos').textContent = '—';
     $('#stSel').textContent = '';
     $('#stLang').textContent = '';
     $('#stEol').textContent = '';
+    badge.hidden = true;
+    $('#btnRun').disabled = true;
     updateTitle();
     return;
   }
   const { state } = v;
   const head = state.selection.main.head;
   const line = state.doc.lineAt(head);
-  $('#stPos').textContent = `Ln ${line.number}, Col ${head - line.from + 1}`;
+  $('#stPos').textContent = t('status.pos', { line: line.number, col: head - line.from + 1 });
   const selected = state.selection.ranges.reduce((n, r) => n + (r.to - r.from), 0);
   const cursors = state.selection.ranges.length;
-  $('#stSel').textContent = (selected ? `Sel: ${selected}` : `${state.doc.lines} líneas`) + (cursors > 1 ? ` · ${cursors} cursores` : '');
-  $('#stLang').textContent = langById(d.rec.lang).label;
+  $('#stSel').textContent = (selected ? t('status.sel', { n: selected }) : t('status.lines', { n: state.doc.lines })) + (cursors > 1 ? ' · ' + t('status.cursors', { n: cursors }) : '');
+  const label = langLabel(d.rec.lang);
+  $('#stLang').textContent = label;
   $('#stEol').textContent = d.rec.eol || 'LF';
+  badge.hidden = false;
+  badge.textContent = label;
+  const runnable = !!runKind(d.rec.lang, d.rec.name);
+  badge.classList.toggle('runnable', runnable);
+  badge.title = t('lang.badgeTitle', { where: runWhere(d.rec.lang) });
+  $('#btnRun').disabled = false;
+  $('#btnRun').classList.toggle('muted', !runnable);
   updateTitle();
 }
 
@@ -1864,10 +1939,11 @@ function syncViewport() {
   document.documentElement.style.setProperty('--vvh', h + 'px');
 }
 window.visualViewport?.addEventListener('resize', syncViewport);
-window.addEventListener('resize', () => {
+window.addEventListener('resize', debounce(() => {
   syncViewport();
   $('#panes').classList.toggle('column', currentDir() === 'column');
-});
+  runner?.layout();
+}, 80));
 
 /* ------------------------------------------------------------------ service worker */
 
@@ -1880,8 +1956,8 @@ function registerSW() {
       const nw = reg.installing;
       nw?.addEventListener('statechange', () => {
         if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-          toast('Hay una versión nueva de MultiPad.', {
-            action: 'Actualizar',
+          toast(t('sw.newVersion'), {
+            action: t('sw.update'),
             onAction: () => { iClickedUpdate = true; flushAll(); nw.postMessage('skip-waiting'); },
           });
         }
@@ -1891,35 +1967,11 @@ function registerSW() {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadController) return; // primera instalación, no es una actualización
     if (iClickedUpdate) setTimeout(() => location.reload(), 300);
-    else toast('MultiPad se actualizó. Recarga esta ventana cuando puedas.', { action: 'Recargar', onAction: () => location.reload() });
+    else toast(t('sw.updated'), { action: t('sw.reload'), onAction: () => location.reload() });
   });
 }
 
 /* ------------------------------------------------------------------ inicio */
-
-const WELCOME = `# Bienvenido a MultiPad
-
-Editor de código que funciona en computadora, tablet y celular.
-
-## Paneles y ventanas
-- Divide la ventana con el botón de dos columnas (o Ctrl+\\). Hasta 4 paneles.
-- Arrastra una pestaña a otro panel, o usa el menú de la pestaña (clic derecho; en pantallas táctiles, mantén presionado o toca ⋮).
-- "Ventana nueva" abre otra ventana de MultiPad con su propio contenido.
-- "Ventana nueva en otra pantalla" la abre directamente en tu segundo monitor (Chrome/Edge).
-- Un mismo archivo abierto en dos ventanas se sincroniza mientras escribes.
-- Puedes arrastrar una pestaña de una ventana a otra.
-
-## Archivos
-- Ctrl+O abre archivos. En Chrome/Edge de escritorio, Ctrl+S guarda directo en el archivo original.
-- En iPhone, iPad y Firefox, "Guardar" descarga el archivo o abre el menú Compartir.
-- Todo lo que escribes queda guardado en este navegador aunque cierres la pestaña.
-  Lo encuentras en el panel lateral (Ctrl+B), sección "Documentos del espacio".
-
-## Atajos
-Menú Ayuda → Atajos de teclado.
-
-Puedes cerrar este documento cuando quieras.
-`;
 
 async function start() {
   await claimWindowId();
@@ -1929,6 +1981,7 @@ async function start() {
   if (!layout || !Array.isArray(layout.panes) || !layout.panes.length) {
     layout = { dir: 'row', panes: [newPane()], focused: null, sidebar: false };
   }
+  layout.run = Object.assign({ open: false, size: 460, sizeV: 300, tab: 'preview', auto: true, stdin: false, stdinText: '' }, layout.run || {});
   // Se descartan pestañas cuyos documentos ya no existen.
   for (const pane of layout.panes) {
     const ok = [];
@@ -1941,11 +1994,30 @@ async function start() {
 
   try { folders = (await db.get('folders')) || []; } catch { folders = []; }
 
+  runner = createRunner({
+    wid: WID,
+    runState: () => layout.run,
+    saveState: () => saveLayout(),
+    activeDoc: () => { const d = activeDoc(); return d ? { id: d.rec.id, name: d.rec.name, lang: d.rec.lang, text: getText(d) } : null; },
+    getDoc: (id) => docTextById(id),
+    allDocs: () => allDocTexts(),
+    settings: () => settings,
+    langLabel,
+    isDark: () => resolvedTheme() === 'dark',
+    uiLang: () => getLang(),
+    toast,
+    openWindow: (url, name, otherScreen) => openWindowUrl(url, name, otherScreen),
+    onResize: () => { for (const v of allViews()) v.requestMeasure(); },
+    onRunning: (on) => { $('#btnRun').classList.toggle('running', on); },
+  });
+
   syncViewport();
   applySettings();
   renderWinLabel();
   renderPanes();
+  runner.layout();
   if (layout.sidebar) toggleSidebar(true);
+  $('#runStdin').value = layout.run.stdinText || '';
 
   const params = new URLSearchParams(location.search);
   const docParam = params.get('doc');
@@ -1958,14 +2030,15 @@ async function start() {
 
   if (WID === 'main' && !(await db.get('initialized'))) {
     await db.set('initialized', true);
-    const rec = await createDoc({ name: 'Bienvenida.md', content: WELCOME, savedContent: WELCOME });
+    const welcome = t('welcome.doc');
+    const rec = await createDoc({ name: t('welcome.name'), content: welcome, savedContent: welcome });
     await openDocInPane(rec.id);
   }
 
   // Archivos abiertos desde el sistema operativo con la app instalada ("Abrir con…").
   if ('launchQueue' in window) {
-    window.launchQueue.setConsumer(async (params) => {
-      for (const h of params.files || []) await openHandle(h);
+    window.launchQueue.setConsumer(async (p) => {
+      for (const h of p.files || []) await openHandle(h);
     });
   }
 
@@ -1981,12 +2054,12 @@ async function start() {
 
 window.addEventListener('pagehide', () => {
   flushAll();
-  localStorage.setItem(layoutKey(), JSON.stringify({ ...layout, saved: Date.now() }));
+  if (layout) localStorage.setItem(layoutKey(), JSON.stringify({ ...layout, saved: Date.now() }));
   bc.postMessage({ type: 'bye', wid: WID, from: WID });
 });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAll(); });
 
 start().catch((err) => {
   console.error(err);
-  toast('Error al iniciar: ' + err.message, { timeout: 15000 });
+  toast(t('err.start', { msg: err.message }), { timeout: 15000 });
 });

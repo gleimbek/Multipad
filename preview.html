@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MultiPad · Vista previa</title>
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+  <style>
+    html, body { margin: 0; height: 100%; background: #16191d; font: 13px system-ui, sans-serif; color: #8b949e; }
+    iframe { border: 0; width: 100%; height: 100%; display: block; background: #fff; }
+    #wait { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; padding: 20px; }
+  </style>
+</head>
+<body>
+  <div id="wait"></div>
+  <iframe id="frame" sandbox="allow-scripts allow-modals allow-forms allow-popups" hidden></iframe>
+  <script>
+    // Ventana que solo muestra la vista previa. Recibe el contenido desde la ventana del editor
+    // por BroadcastChannel; se puede mover a otra pantalla.
+    const params = new URLSearchParams(location.search);
+    const wid = params.get('wid');
+    const en = params.get('lang') === 'en';
+    document.documentElement.lang = en ? 'en' : 'es';
+    document.getElementById('wait').textContent = en
+      ? 'Waiting for content… Press Run (F5) in the editor.'
+      : 'Esperando contenido… Pulsa Ejecutar (F5) en el editor.';
+    const frame = document.getElementById('frame');
+    const bc = new BroadcastChannel('multipad-preview');
+    bc.onmessage = (e) => {
+      const m = e.data;
+      if (!m || m.wid !== wid || m.type !== 'render') return;
+      document.getElementById('wait').hidden = true;
+      frame.hidden = false;
+      frame.srcdoc = m.html;
+      document.title = (m.title || '') + (en ? ' · Preview' : ' · Vista previa');
+    };
+    window.addEventListener('message', (e) => {
+      if (e.source !== frame.contentWindow || !e.data || !e.data.__multipad) return;
+      bc.postMessage({ type: 'console', wid, level: e.data.level, args: e.data.args });
+    });
+    bc.postMessage({ type: 'need', wid });
+  </script>
+</body>
+</html>

@@ -1,11 +1,16 @@
 # MultiPad
 
+[English version](README.en.md)
+
 Editor de código que corre en el navegador y se instala como app en computadora, tablet y celular. La idea viene de Notepad++, con dos diferencias: puedes dividir cada ventana en varios paneles y puedes tener varias ventanas de la app abiertas a la vez, cada una con su propio contenido (por ejemplo, una en cada monitor).
 
 No necesita servidor ni base de datos. Es HTML, CSS y JavaScript sin frameworks, y se publica gratis en GitHub Pages.
 
 ## Qué hace
 
+- Interfaz en español e inglés (botón ES/EN arriba a la derecha, o Ver → Idioma de la interfaz). Arranca en el idioma del navegador.
+- Botón **Ejecutar** (F5) con panel de vista previa y consola. Detalle más abajo.
+- Menú **Lenguaje** como el de Notepad++: lista todos los lenguajes, marca el del documento y deja cambiarlo. El lenguaje actual también se ve junto a Ejecutar y en la barra de estado.
 - Pestañas con indicador de cambios sin guardar, reordenables arrastrando.
 - Hasta 4 paneles por ventana, en fila o en columna, con divisores que se arrastran (doble clic en el divisor los empareja).
 - Mover una pestaña a otro panel, o clonarla para ver el mismo archivo en dos lugares.
@@ -19,7 +24,39 @@ No necesita servidor ni base de datos. Es HTML, CSS y JavaScript sin frameworks,
 - Tema oscuro, claro o automático, y tamaño de letra ajustable.
 - Barra de teclas extra en pantallas táctiles (tabulación, llaves, paréntesis, flechas, deshacer).
 - Panel lateral con carpetas abiertas y la lista de todos los documentos del espacio de trabajo.
-- Funciona sin conexión una vez instalada.
+- Funciona sin conexión una vez instalada. Python y SQL necesitan internet la primera vez que se usan (se descargan de jsDelivr); Judge0 siempre necesita internet.
+
+## Lenguajes y ejecución
+
+MultiPad elige el lenguaje por la extensión. Si no acierta, se cambia desde el menú Lenguaje o con Alt+L. En el menú, los lenguajes con ▶ se pueden ejecutar.
+
+| Lenguaje | Qué pasa al pulsar Ejecutar | Dónde corre |
+|---|---|---|
+| HTML | Vista previa en vivo. Incluye los `.css` y `.js` que enlaza si están abiertos en MultiPad con el mismo nombre. | Navegador |
+| CSS | Muestra el HTML que lo enlaza; si ninguno lo usa, una página de ejemplo | Navegador |
+| JavaScript | Si un HTML lo enlaza, muestra ese HTML; si no, lo ejecuta y `console.log` sale en la consola | Navegador |
+| Markdown | Vista previa formateada | Navegador |
+| SVG | Vista previa de la imagen | Navegador |
+| Python | Ejecuta con Pyodide. `input()` lee de la caja stdin | Navegador (descarga ~12 MB la primera vez) |
+| SQL | Ejecuta en SQLite y muestra las tablas de resultado | Navegador |
+| JSON | Revisa que sea válido y lo formatea | Navegador |
+| Java, C, C++, C#, Kotlin, Go, Rust, Ruby, PHP, Bash, TypeScript | Compila y ejecuta | Servidor Judge0 |
+| YAML, PowerShell, JSX, TSX, texto | Solo edición | — |
+
+El panel tiene dos pestañas: **Vista previa** y **Consola**. Con "En vivo" activado, la vista previa de HTML, CSS y Markdown se actualiza mientras escribes. El botón ⧉ abre la vista previa en una ventana aparte, que puedes llevar al segundo monitor (también: Ejecutar → Vista previa en otra pantalla).
+
+Si el programa lee del teclado (`input()`, `Scanner`, `cin`), escribe las respuestas en **stdin**, una por línea, antes de ejecutar.
+
+### Sobre Judge0
+
+Los lenguajes compilados necesitan un servidor. Por defecto MultiPad usa `https://ce.judge0.com`, la instancia pública de Judge0. No pude probarla desde mi entorno, así que conviene verificarla en tu dispositivo con un "hola mundo" en Java. Si falla, hay dos opciones en Ejecutar → Servidor para Java, C++, C#…:
+
+- Judge0 por RapidAPI: dirección `https://judge0-ce.p.rapidapi.com` y tu clave (tiene un plan gratuito con límite diario).
+- Tu propio Judge0 (Docker): su dirección y su token.
+
+El código que ejecutas en Judge0 se envía a ese servidor. Python, JavaScript, SQL, HTML y Markdown nunca salen del dispositivo.
+
+En Java, la clase pública debe llamarse `Main`.
 
 ## Dónde se guardan los archivos
 
@@ -92,6 +129,10 @@ En tablets, "varias ventanas" depende del sistema: en Android puedes usar pantal
 
 | Acción | Atajo |
 |---|---|
+| Ejecutar / vista previa | F5 o Ctrl+Enter |
+| Detener | Shift+F5 |
+| Panel de ejecución | Ctrl+Shift+P |
+| Cambiar lenguaje | Alt+L |
 | Nuevo | Alt+N |
 | Abrir | Ctrl+O |
 | Guardar / Guardar como | Ctrl+S / Ctrl+Shift+S |
@@ -112,10 +153,16 @@ En Mac, Cmd en lugar de Ctrl. Los atajos de "nuevo" y "cerrar" usan Alt porque e
 ```
 index.html              interfaz
 css/styles.css          estilos (tema oscuro y claro)
+preview.html            ventana aparte para la vista previa
 js/app.js               pestañas, paneles, ventanas, archivos, menús
+js/runner.js            panel de ejecución y vista previa
+js/py-worker.js         Python (Pyodide) en un worker, para poder detenerlo
+js/i18n.js              textos en español e inglés
+js/util.js              avisos, ventanas modales y utilidades
 js/db.js                almacenamiento local (IndexedDB)
 js/langs.js             lenguajes y detección por extensión
 vendor/codemirror.js    CodeMirror 6 empaquetado en un solo archivo (licencia MIT)
+vendor/markdown.js      marked + DOMPurify para la vista previa de Markdown
 sw.js                   caché para uso sin conexión
 manifest.webmanifest    datos para instalar la app
 icons/                  íconos
