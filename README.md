@@ -34,12 +34,12 @@ Multipad elige el lenguaje por la extensión. Si no acierta, se cambia desde el 
 
 | Lenguaje | Qué pasa al pulsar Ejecutar | Dónde corre |
 |---|---|---|
-| HTML | Vista previa en vivo. Incluye los `.css` y `.js` que enlaza si están abiertos en Multipad con el mismo nombre. | Navegador |
+| HTML | Vista previa en vivo. Incluye los .css y .js que enlaza si están abiertos en Multipad con el mismo nombre. | Navegador |
 | CSS | Muestra el HTML que lo enlaza; si ninguno lo usa, una página de ejemplo | Navegador |
 | JavaScript | Si un HTML lo enlaza, muestra ese HTML; si no, lo ejecuta y `console.log` sale en la consola | Navegador |
 | Markdown | Vista previa formateada | Navegador |
 | SVG | Vista previa de la imagen | Navegador |
-| Python | Ejecuta con Pyodide. `input()` lee de la caja stdin | Navegador (descarga ~12 MB la primera vez) |
+| Python | Ejecuta con Pyodide. input() lee de la caja stdin | Navegador (descarga ~12 MB la primera vez) |
 | SQL | Ejecuta en SQLite y muestra las tablas de resultado | Navegador |
 | JSON | Revisa que sea válido y lo formatea | Navegador |
 | Java, C, C++, C#, Kotlin, Go, Rust, Ruby, PHP, Bash, TypeScript | Compila y ejecuta | Servidor Judge0 |
@@ -49,31 +49,31 @@ Multipad elige el lenguaje por la extensión. Si no acierta, se cambia desde el 
 
 Mientras escribes, Multipad revisa la sintaxis de JavaScript, JSON, HTML (etiquetas sin cerrar o mal cerradas), CSS, Python, Java, PHP, C/C++, Rust, TypeScript, XML y SQL. El mensaje aparece al pasar el mouse (o tocar) el subrayado. Se desactiva en Ver → Marcar errores al escribir.
 
-Los errores de ejecución se marcan en la línea correcta del archivo: el traceback de Python, los errores de JavaScript (también los de un `.js` enlazado desde un HTML) y la salida de compilación de Judge0.
+Los errores de ejecución se marcan en la línea correcta del archivo: el traceback de Python, los errores de JavaScript (también los de un .js enlazado desde un HTML) y la salida de compilación de Judge0.
 
 ### Imágenes
 
-La vista previa resuelve `<img src>`, `srcset`, `<video poster>` y `url()` de CSS:
+La vista previa resuelve <img src>, srcset, <video poster> y url() de CSS:
 
-1. Si el HTML se abrió desde una carpeta (Abrir carpeta), busca la imagen en esa carpeta respetando la ruta: `img/foto.png`, `../assets/logo.svg`.
+1. Si el HTML se abrió desde una carpeta (Abrir carpeta), busca la imagen en esa carpeta respetando la ruta: img/foto.png, ../assets/logo.svg.
 2. Si no, la busca por nombre en la sección Imágenes del panel lateral. Ahí se agregan imágenes con el botón de imagen o arrastrándolas a la ventana.
 
-Las imágenes que cargue JavaScript en tiempo de ejecución (`new Image()`, `fetch`) no se resuelven; para esas conviene usar URLs completas.
+Las imágenes que cargue JavaScript en tiempo de ejecución (new Image(), fetch) no se resuelven; para esas conviene usar URLs completas.
 
 El panel tiene dos pestañas: **Vista previa** y **Consola**. Con "En vivo" activado, la vista previa de HTML, CSS y Markdown se actualiza mientras escribes. El botón ⧉ abre la vista previa en una ventana aparte, que puedes llevar al segundo monitor (también: Ejecutar → Vista previa en otra pantalla).
 
-Si el programa lee del teclado (`input()`, `Scanner`, `cin`), escribe las respuestas en **stdin**, una por línea, antes de ejecutar.
+Si el programa lee del teclado (input(), Scanner cin), escribe las respuestas en **stdin**, una por línea, antes de ejecutar.
 
 ### Sobre Judge0
 
-Los lenguajes compilados necesitan un servidor. Por defecto Multipad usa `https://ce.judge0.com`, la instancia pública de Judge0. No pude probarla desde mi entorno, así que conviene verificarla en tu dispositivo con un "hola mundo" en Java. Si falla, hay dos opciones en Ejecutar → Servidor para Java, C++, C#…:
+Los lenguajes compilados necesitan un servidor. Por defecto, Multipad usa https://ce.judge0.com, la instancia pública de Judge0. No pude probarla desde mi entorno, así que conviene verificarla en tu dispositivo con un "hola mundo" en Java. Si falla, hay dos opciones en Ejecutar → Servidor para Java, C++, C#…:
 
-- Judge0 por RapidAPI: dirección `https://judge0-ce.p.rapidapi.com` y tu clave (tiene un plan gratuito con límite diario).
+- Judge0 por RapidAPI: dirección https://judge0-ce.p.rapidapi.com y tu clave (tiene un plan gratuito con límite diario).
 - Tu propio Judge0 (Docker): su dirección y su token.
 
 El código que ejecutas en Judge0 se envía a ese servidor. Python, JavaScript, SQL, HTML y Markdown nunca salen del dispositivo.
 
-En Java, la clase pública debe llamarse `Main`.
+En Java, la clase pública debe llamarse Main.
 
 ## Dónde se guardan los archivos
 
@@ -93,7 +93,7 @@ El espacio de trabajo es local a cada dispositivo: lo que escribes en la tablet 
 
 ## Probarlo en tu computadora
 
-El service worker no funciona abriendo `index.html` con doble clic; hace falta un servidor local. Cualquiera de estas opciones sirve:
+El service worker no funciona abriendo index.html con doble clic; hace falta un servidor local. Cualquiera de estas opciones sirve:
 
 ```bash
 # Python
@@ -101,7 +101,7 @@ python -m http.server 8080
 # luego abre http://localhost:8080
 ```
 
-O copia la carpeta a `htdocs` de XAMPP y abre `http://localhost/multipad/`.
+O copia la carpeta a htdocs de XAMPP y abre http://localhost/multipad/.
 
 ## Publicarlo en GitHub Pages
 
@@ -114,16 +114,16 @@ O copia la carpeta a `htdocs` de XAMPP y abre `http://localhost/multipad/`.
    git push -u origin main
    ```
 
-3. En GitHub: **Settings → Pages → Build and deployment → Source: Deploy from a branch**, rama `main`, carpeta `/ (root)`. Guarda.
+3. En GitHub: **Settings → Pages → Build and deployment → Source: Deploy from a branch**, rama main, carpeta / (root). Guarda.
 4. En un par de minutos queda en `https://gleimbek.github.io/multipad/`.
 
 ### Cuando publiques cambios
 
-Abre `sw.js` y sube el número de `VERSION` (por ejemplo `multipad-v1.0.1`). Si no lo cambias, los dispositivos que ya instalaron la app siguen usando la versión en caché. Con el número nuevo, cada dispositivo muestra el aviso "Hay una versión nueva" y se actualiza con un toque.
+Abre sw.js y sube el número de VERSION (por ejemplo `multipad-v1.0.1). Si no lo cambias, los dispositivos que ya instalaron la app siguen usando la versión en caché. Con el número nuevo, cada dispositivo muestra el aviso "Hay una versión nueva" y se actualiza con un toque.
 
 ## Instalarlo en cada dispositivo
 
-Abre `https://gleimbek.github.io/multipad/` y:
+Abre https://gleimbek.github.io/multipad/ y:
 
 - **Windows / Mac / Linux (Chrome o Edge):** el ícono de instalar en la barra de direcciones, o menú **Archivo → Instalar Multipad**. Queda como app con su propia ventana y en el menú Inicio/Launchpad. En Windows además aparece en "Abrir con…" para archivos de código.
 - **Android (Chrome):** menú ⋮ → **Instalar aplicación** (o "Agregar a la pantalla principal").
@@ -135,7 +135,7 @@ En una computadora con dos monitores:
 
 1. Menú **Ventana → Ventana nueva en otra pantalla** (o el botón con dos monitores en la barra).
 2. La primera vez, Chrome/Edge pide permiso de "administración de ventanas". Acéptalo; si no, la ventana se abre igual y la arrastras al otro monitor.
-3. Cada ventana tiene nombre ("Ventana 1", "Ventana 2"…). Haz clic en el nombre, arriba a la derecha, para cambiarlo, por ejemplo "Monitor izquierdo".
+3. Cada ventana tiene nombre ("Ventana 1", "Ventana 2"…). Haz clic en el nombre, arriba a la derecha, para cambiarlo, por ejemplo, a "Monitor izquierdo".
 4. Para pasar un archivo de un monitor al otro: arrastra la pestaña a la otra ventana, o clic derecho en la pestaña → **Enviar a otra ventana…**.
 
 Si cierras una ventana, sus pestañas no se pierden: **Ventana → Reabrir ventana cerrada…**.
@@ -185,4 +185,4 @@ manifest.webmanifest    datos para instalar la app
 icons/                  íconos
 ```
 
-`vendor/codemirror.js` ya viene compilado, así que no hace falta `npm` para usar ni publicar la app. Si algún día quieres agregar un lenguaje, el paquete se regenera con esbuild a partir de los paquetes `@codemirror/*`.
+vendor/codemirror.js ya viene compilado, así que no hace falta npm para usar ni publicar la app. Si algún día quieres agregar un lenguaje, el paquete se regenera con esbuild a partir de los paquetes @codemirror/*.
