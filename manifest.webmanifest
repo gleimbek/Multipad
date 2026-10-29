@@ -1,0 +1,41 @@
+{
+  "name": "MultiPad",
+  "short_name": "MultiPad",
+  "description": "Editor de código con pestañas, paneles divididos y varias ventanas.",
+  "lang": "es",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#16191d",
+  "theme_color": "#16191d",
+  "orientation": "any",
+  "categories": ["developer", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "text/plain": [".txt", ".log", ".md", ".env", ".ini", ".cfg"],
+        "text/html": [".html", ".htm"],
+        "text/css": [".css", ".scss", ".less"],
+        "text/javascript": [".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx"],
+        "application/json": [".json"],
+        "application/xml": [".xml", ".svg"],
+        "text/x-python": [".py"],
+        "text/x-java": [".java"],
+        "application/x-httpd-php": [".php"],
+        "text/x-c": [".c", ".h", ".cpp", ".hpp", ".cs"],
+        "text/x-sql": [".sql"],
+        "text/yaml": [".yml", ".yaml"],
+        "text/x-shellscript": [".sh", ".bash", ".ps1"]
+      }
+    }
+  ],
+  "launch_handler": { "client_mode": "focus-existing" }
+}
