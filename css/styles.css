@@ -724,3 +724,28 @@ table.res th, table.info-table th { background: var(--bg-3); font-weight: 600; }
   #panes:not(.column) > .divider { width: 10px; }
   #panes.column > .divider { height: 10px; }
 }
+
+/* Errores marcados en el editor */
+.st-btn.problems { color: var(--danger); font-weight: 600; }
+.st-btn.problems::before { content: "⊗ "; }
+#panes .cm-lintRange-error { background-image: none; text-decoration: underline wavy var(--danger); text-decoration-skip-ink: none; text-underline-offset: 3px; }
+#panes .cm-lintRange-warning { background-image: none; text-decoration: underline wavy #e8b54a; text-underline-offset: 3px; }
+#panes .cm-lint-marker-error { content: none; width: 8px; height: 8px; margin: 5px 0 0 3px; border-radius: 50%; background: var(--danger); }
+#panes .cm-lint-marker-warning { content: none; width: 8px; height: 8px; margin: 5px 0 0 3px; border-radius: 50%; background: #e8b54a; }
+#panes .cm-gutter-lint { width: 14px; }
+#panes .cm-tooltip-lint { background: var(--menu-bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
+#panes .cm-diagnostic-error { border-left-color: var(--danger); }
+#panes .cm-panel.cm-panel-lint ul [aria-selected] { background: var(--accent-soft); }
+#panes .cm-panel.cm-panel-lint ul [aria-selected] .cm-diagnosticText { color: var(--text); }
+
+/* Imágenes del espacio de trabajo */
+.side-section.images { border-top: 1px solid var(--line); max-height: 34%; }
+.imglist { overflow: auto; padding: 0 6px 8px; }
+.img-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+.img-item:hover { background: var(--bg-3); }
+.img-item img { width: 28px; height: 28px; object-fit: cover; border-radius: 4px; background: #fff; flex: none; }
+.img-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.img-item .size { color: var(--text-dim); font-size: 11px; }
+.img-item .del { opacity: 0; border: 0; background: none; color: var(--text-dim); cursor: pointer; padding: 0 4px; }
+.img-item:hover .del { opacity: 1; }
+.img-item .del:hover { color: var(--danger); }

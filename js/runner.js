@@ -37,7 +37,7 @@ function referencesFile(html, name) {
 // Script que se inyecta en cada vista previa para mandar console.log y errores al panel.
 function consoleHook() {
   const err = t('run.line');
-  return `<script>(function(){var send=function(level,args){try{parent.postMessage({__multipad:1,level:level,args:Array.prototype.map.call(args,function(a){if(typeof a==='string')return a;if(a instanceof Error)return a.stack||String(a);try{var s=JSON.stringify(a,null,2);return s===undefined?String(a):s}catch(e){return String(a)}})},'*')}catch(e){}};['log','info','warn','error','debug','table'].forEach(function(l){var o=console[l]||console.log;console[l]=function(){send(l==='table'?'log':l,arguments);return o.apply(console,arguments)}});addEventListener('error',function(e){send('error',[e.message+(e.lineno?' (${err} '+e.lineno+')':'')])});addEventListener('unhandledrejection',function(e){var r=e.reason;send('error',['Promise: '+(r&&r.message||r)])});})();<\/script>`;
+  return `<script>(function(){var send=function(level,args){try{parent.postMessage({__multipad:1,level:level,args:Array.prototype.map.call(args,function(a){if(typeof a==='string')return a;if(a instanceof Error)return a.stack||String(a);try{var s=JSON.stringify(a,null,2);return s===undefined?String(a):s}catch(e){return String(a)}})},'*')}catch(e){}};['log','info','warn','error','debug','table'].forEach(function(l){var o=console[l]||console.log;console[l]=function(){send(l==='table'?'log':l,arguments);return o.apply(console,arguments)}});addEventListener('error',function(e){try{parent.postMessage({__multipad:1,level:'error',args:[e.message],line:e.lineno,col:e.colno},'*')}catch(x){}});addEventListener('unhandledrejection',function(e){var r=e.reason;send('error',['Promise: '+(r&&r.message||r)])});})();<\/script>`;
 }
 
 function injectHook(html) {
@@ -267,8 +267,35 @@ export function createRunner(api) {
   window.addEventListener('message', (e) => {
     const m = e.data;
     if (!m || !m.__multipad || e.source !== frame.contentWindow) return;
-    log(m.level === 'log' || m.level === 'debug' ? 'out' : m.level, m.args.join(' '));
+    let text = m.args.join(' ');
+    if (m.level === 'error' && m.line) {
+      const where = markRuntimeLine(m.line, m.col, text);
+      text += where ? ` (${where.name}, ${t('run.line')} ${where.line})` : ` (${t('run.line')} ${m.line})`;
+    }
+    log(m.level === 'log' || m.level === 'debug' ? 'out' : m.level, text);
   });
+
+  // Traduce la línea de un error del navegador a la línea del archivo que lo causó.
+  let lineMap = []; // [{docId, start, end}] líneas del documento final que corresponden a cada archivo
+  function markRuntimeLine(line, col, message) {
+    const seg = lineMap.find((x) => line >= x.start && line <= x.end);
+    if (!seg) return null;
+    const fileLine = line - seg.start + 1;
+    api.markErrors(seg.docId, [{ line: fileLine, col, message, source: 'JavaScript' }]);
+    return { name: seg.name, line: fileLine };
+  }
+
+  // Busca en el HTML final dónde quedó cada <script data-id="…"> para poder ubicar sus errores.
+  function buildLineMap(html, entries) {
+    lineMap = [];
+    for (const { docId, marker } of entries) {
+      const idx = html.indexOf(marker);
+      if (idx < 0) continue;
+      const startLine = html.slice(0, idx + marker.length).split('\n').length + 1;
+      const doc = entries.find((x) => x.docId === docId);
+      lineMap.push({ docId, name: doc.name, start: startLine, end: startLine + doc.lines - 1 });
+    }
+  }
 
   previewBc.addEventListener('message', (e) => {
     const m = e.data;
@@ -287,20 +314,68 @@ export function createRunner(api) {
     if (tab) showTab(tab);
   }
 
-  function inlineAssets(html, byName, missing) {
-    html = html.replace(/<link\b[^>]*>/gi, (tag) => {
+  async function replaceAsync(str, re, fn) {
+    const jobs = [];
+    str.replace(re, (...args) => { jobs.push(fn(...args)); return ''; });
+    const results = await Promise.all(jobs);
+    let i = 0;
+    return str.replace(re, () => results[i++]);
+  }
+
+  // Incluye en la vista previa los .css y .js enlazados: primero los abiertos en Multipad, luego los de la carpeta del HTML.
+  async function inlineAssets(html, byName, missing, hostId, scripts) {
+    const lookup = async (url) => {
+      const doc = byName.get(baseName(url));
+      if (doc) return doc;
+      const text = await api.resolveText(url, hostId);
+      return text == null ? null : { name: baseName(url), text };
+    };
+    html = await replaceAsync(html, /<link\b[^>]*>/gi, async (tag) => {
       if (!/rel\s*=\s*["']?stylesheet/i.test(tag)) return tag;
       const m = tag.match(/href\s*=\s*["']([^"']+)["']/i);
       if (!m || isExternal(m[1])) return tag;
-      const doc = byName.get(baseName(m[1]));
+      const doc = await lookup(m[1]);
       if (!doc) { missing.push(m[1]); return tag; }
       return `<style data-file="${escapeHtml(doc.name)}">\n${doc.text}\n</style>`;
     });
-    html = html.replace(/<script\b([^>]*?)\bsrc\s*=\s*["']([^"']+)["']([^>]*)>\s*<\/script>/gi, (all, a, src, b) => {
+    html = await replaceAsync(html, /<script\b([^>]*?)\bsrc\s*=\s*["']([^"']+)["']([^>]*)>\s*<\/script>/gi, async (all, a, src, b) => {
       if (isExternal(src)) return all;
-      const doc = byName.get(baseName(src));
+      const doc = await lookup(src);
       if (!doc) { missing.push(src); return all; }
-      return `<script${a}${b} data-file="${escapeHtml(doc.name)}">\n${doc.text.replace(/<\/script/gi, '<\\/script')}\n</script>`;
+      const marker = `<script${a}${b} data-file="${escapeHtml(doc.name)}" data-mp="${scripts.length}">`;
+      if (doc.id) scripts.push({ docId: doc.id, name: doc.name, marker, lines: doc.text.split('\n').length });
+      return `${marker}\n${doc.text.replace(/<\/script/gi, '<\\/script')}\n</script>`;
+    });
+    return html;
+  }
+
+  // Cambia las rutas de imágenes (img, srcset, video, CSS url()) por los datos de la imagen.
+  async function inlineImages(html, hostId, missing) {
+    const cache = new Map();
+    const resolve = (url) => {
+      if (!url || isExternal(url) || /^(#|blob:|about:|javascript:)/i.test(url)) return Promise.resolve(null);
+      if (!cache.has(url)) cache.set(url, api.resolveAsset(url, hostId).then((r) => { if (!r) missing.add(url); return r; }));
+      return cache.get(url);
+    };
+    html = await replaceAsync(html, /<(img|source|video|audio|image|use|input|link)\b[^>]*>/gi, async (tag, name) => {
+      if (name.toLowerCase() === 'link' && !/rel\s*=\s*["']?[^"']*icon/i.test(tag)) return tag;
+      tag = await replaceAsync(tag, /(\s(?:src|poster|href|xlink:href)\s*=\s*)(["'])([^"']*)\2/gi, async (all, pre, q, url) => {
+        const data = await resolve(url.trim());
+        return data ? `${pre}${q}${data}${q}` : all;
+      });
+      tag = await replaceAsync(tag, /(\ssrcset\s*=\s*)(["'])([^"']*)\2/gi, async (all, pre, q, list) => {
+        const parts = await Promise.all(list.split(',').map(async (item) => {
+          const [url, ...rest] = item.trim().split(/\s+/);
+          const data = await resolve(url);
+          return [data || url, ...rest].join(' ');
+        }));
+        return `${pre}${q}${parts.join(', ')}${q}`;
+      });
+      return tag;
+    });
+    html = await replaceAsync(html, /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, async (all, q, url) => {
+      const data = await resolve(url.trim());
+      return data ? `url("${data}")` : all;
     });
     return html;
   }
@@ -327,18 +402,34 @@ export function createRunner(api) {
     }
     const byName = new Map(all.map((x) => [x.name.toLowerCase(), x]));
     const missing = [];
-    const html = inlineAssets(host.text, byName, missing);
+    const missingImages = new Set();
+    const scripts = [];
+    let html = await inlineAssets(host.text, byName, missing, host.id, scripts);
+    html = await inlineImages(html, host.id, missingImages);
     header(t('run.headPreview', { name: host.name }));
     if (note) log('info', note);
     for (const f of missing) log('warn', t('run.missing', { file: f }));
-    render(injectHook(html), host.name);
+    for (const f of missingImages) log('warn', t('run.imgMissing', { file: f }));
+    const finalHtml = injectHook(html);
+    // Las líneas del HTML propio coinciden con las del archivo, porque el script de consola se inserta sin saltos de línea.
+    buildLineMap(finalHtml, scripts);
+    if (host.id) {
+      const firstInline = finalHtml.indexOf(' data-file="');
+      const end = firstInline < 0 ? host.text.split('\n').length : finalHtml.slice(0, firstInline).split('\n').length - 1;
+      if (end > 0) lineMap.push({ docId: host.id, name: host.name, start: 1, end });
+    }
+    render(finalHtml, host.name);
   }
 
   async function runMarkdown(doc) {
     const { renderMarkdown } = await import('../vendor/markdown.js');
     header(t('run.headPreview', { name: doc.name }));
     const dark = api.isDark();
-    render(`<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>${MD_CSS(dark)}</style></head><body>${renderMarkdown(doc.text)}</body></html>`, doc.name);
+    lineMap = [];
+    const missingImages = new Set();
+    const body = await inlineImages(renderMarkdown(doc.text), doc.id, missingImages);
+    for (const f of missingImages) log('warn', t('run.imgMissing', { file: f }));
+    render(`<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>${MD_CSS(dark)}</style></head><body>${body}</body></html>`, doc.name);
   }
 
   function runSvg(doc) {
@@ -349,6 +440,7 @@ export function createRunner(api) {
   function runJs(doc) {
     header(t('run.headRun', { name: doc.name, where: t('run.whereBrowser') }));
     const code = doc.text.replace(/<\/script/gi, '<\\/script');
+    lineMap = [{ docId: doc.id, name: doc.name, start: 2, end: doc.text.split('\n').length + 1 }];
     render(injectHook(`<!doctype html><html><head><meta charset="utf-8"><style>body{font:14px system-ui,sans-serif;margin:12px;color:#222;background:#fff}</style></head><body><script>\n${code}\n</script></body></html>`), doc.name, 'console');
   }
 
@@ -387,7 +479,13 @@ export function createRunner(api) {
       else if (m.type === 'out') log('out', m.text);
       else if (m.type === 'err') log('error', m.text);
       else if (m.type === 'done') { log('ok', t('run.finished', { ms: m.ms })); finish(); }
-      else if (m.type === 'error') { log('error', cleanTraceback(m.text, pyName)); if (/EOFError/.test(m.text)) log('info', t('run.needStdin')); finish(); }
+      else if (m.type === 'error') {
+        const tb = cleanTraceback(m.text, pyName);
+        log('error', tb);
+        markPythonError(tb);
+        if (/EOFError/.test(m.text)) log('info', t('run.needStdin'));
+        finish();
+      }
     };
     worker.onerror = (e) => { log('error', e.message || t('run.pyFail')); finish(); worker?.terminate(); worker = null; };
     return worker;
@@ -414,9 +512,21 @@ export function createRunner(api) {
   }
 
   let pyName = '';
+  let pyDocId = null;
+
+  function markPythonError(tb) {
+    const hits = [...tb.matchAll(/File "([^"]+)", line (\d+)/g)].filter((h) => h[1] === pyName);
+    const last = hits[hits.length - 1];
+    const message = tb.trim().split('\n').pop();
+    // Los errores de sintaxis traen la línea en otro formato: ("<exec>", line 3)
+    const syntax = tb.match(/line (\d+)\)?\s*$/m);
+    const line = last ? Number(last[2]) : (syntax ? Number(syntax[1]) : 0);
+    if (line && pyDocId) api.markErrors(pyDocId, [{ line, message, source: 'Python' }]);
+  }
 
   function runPython(doc) {
     pyName = doc.name;
+    pyDocId = doc.id;
     header(t('run.headRun', { name: doc.name, where: t('run.whereBrowser') }));
     showTab('console');
     maybeHintStdin(doc.text);
@@ -491,6 +601,8 @@ export function createRunner(api) {
       const compile = b64ToUtf8(r.compile_output);
       const stdout = b64ToUtf8(r.stdout);
       const stderr = b64ToUtf8(r.stderr);
+      const compilerErrors = parseCompilerOutput(compile + '\n' + stderr, doc.name);
+      if (compilerErrors.length) api.markErrors(doc.id, compilerErrors);
       if (compile) log('error', compile);
       if (stdout) log('out', stdout);
       if (stderr) log('error', stderr);
@@ -508,6 +620,36 @@ export function createRunner(api) {
       abortRemote = null;
       setRunning(false);
     }
+  }
+
+  // Busca "archivo:línea" en la salida de javac, gcc, kotlinc, go, rustc, C#, PHP y Ruby.
+  function parseCompilerOutput(text, name) {
+    const errs = [];
+    const add = (line, col, message, severity = 'error') => {
+      line = Number(line);
+      if (!line || errs.some((e) => e.line === line)) return;
+      errs.push({ line, col: col ? Number(col) : null, message: message.trim() || 'error', severity, source: 'compiler' });
+    };
+    const lines = text.split('\n');
+    lines.forEach((ln, i) => {
+      let m;
+      if ((m = ln.match(/^(?:[^\s:]*[\\/])?[\w.-]+\.(?:java|c|cc|cpp|cxx|h|hpp|kt|go|ts|rb):(\d+)(?::(\d+))?:?\s*(?:(fatal error|error|warning)\s*:?)?\s*(.*)$/))) {
+        if (m[3] === 'warning') add(m[1], m[2], m[4], 'warning'); else add(m[1], m[2], m[4]);
+      } else if ((m = ln.match(/\((\d+),(\d+)\):\s*(error|warning)\s+\w+:\s*(.*?)(?:\s*\[.*\])?$/))) {
+        add(m[1], m[2], m[4], m[3] === 'warning' ? 'warning' : 'error');
+      } else if ((m = ln.match(/^\s*-->\s*[^:]+:(\d+):(\d+)/))) {
+        const prev = lines.slice(0, i).reverse().find((x) => /^(error|warning)/.test(x)) || 'error';
+        add(m[1], m[2], prev.replace(/^(error|warning)(\[\w+\])?:\s*/, ''), /^warning/.test(prev) ? 'warning' : 'error');
+      } else if ((m = ln.match(/(?:Parse error|Fatal error|Warning):\s*(.*?) in \S+ on line (\d+)/))) {
+        add(m[2], null, m[1]);
+      } else if ((m = ln.match(/\(\w+\.java:(\d+)\)/))) {
+        // Excepción en tiempo de ejecución de Java: "at Main.main(Main.java:7)"
+        const msg = lines.find((x) => /Exception|Error/.test(x) && !/^\s+at /.test(x)) || 'Exception';
+        add(m[1], null, msg);
+      }
+    });
+    void name;
+    return errs.slice(0, 20);
   }
 
   function safeHost(url) {
@@ -561,6 +703,7 @@ export function createRunner(api) {
       if (all.some((x) => x.lang === 'html' && referencesFile(x.text, name))) kind = 'web';
     }
     current = { id: doc.id, kind };
+    api.markErrors(doc.id, []);
     stdinBox.value = state().stdinText || stdinBox.value;
     try {
       if (kind === 'web') await runWeb(doc);
@@ -598,9 +741,27 @@ export function createRunner(api) {
     if (win && !lastRender && current == null) api.toast(t('run.popoutHint'));
   }
 
+  // Muestra una imagen sola en la vista previa (al tocarla en el panel lateral o al abrirla).
+  async function showImage(asset) {
+    open();
+    current = null;
+    lineMap = [];
+    header(t('img.headView', { name: asset.name }));
+    const url = await api.assetDataUrl(asset);
+    const size = asset.size > 1048576 ? (asset.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(asset.size / 1024)) + ' KB';
+    render(`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;font:13px system-ui,sans-serif}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#fff repeating-conic-gradient(#eef1f6 0 25%,#fff 0 50%) 0 0/20px 20px}
+img{max-width:94%;max-height:84vh;box-shadow:0 4px 18px rgba(0,0,0,.18)}p{margin:0;padding:4px 10px;border-radius:6px;background:rgba(255,255,255,.9);color:#333}</style></head>
+<body><img src="${url}" alt="" onload="document.getElementById('d').textContent=this.naturalWidth+' × '+this.naturalHeight+' px · ${size}'"><p><b>${escapeHtml(asset.name)}</b> · <span id="d">${size}</span></p></body></html>`, asset.name);
+  }
+
+  function onAssetsChanged() {
+    if (state().open && current && PREVIEW_KINDS.has(current.kind)) autoRerun();
+  }
+
   function rethemeIfNeeded() {
     if (current?.kind === 'markdown' && lastRender) autoRerun();
   }
 
-  return { run, stop, toggle, open, close, popout, onDocChanged, layout: layoutPanel, rethemeIfNeeded, isOpen: () => !!state().open };
+  return { run, stop, toggle, open, close, popout, onDocChanged, onAssetsChanged, showImage, layout: layoutPanel, rethemeIfNeeded, isOpen: () => !!state().open };
 }

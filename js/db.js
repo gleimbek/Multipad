@@ -1,6 +1,6 @@
 // Almacenamiento local en IndexedDB: documentos del espacio de trabajo y valores sueltos.
 const DB_NAME = 'multipad';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let dbPromise = null;
 
 function openDB() {
@@ -11,8 +11,13 @@ function openDB() {
         const db = req.result;
         if (!db.objectStoreNames.contains('docs')) db.createObjectStore('docs', { keyPath: 'id' });
         if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+        if (!db.objectStoreNames.contains('assets')) db.createObjectStore('assets', { keyPath: 'id' });
       };
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => {
+        // Si otra ventana abre una versión nueva de la base, esta cede la conexión.
+        req.result.onversionchange = () => { req.result.close(); dbPromise = null; };
+        resolve(req.result);
+      };
       req.onerror = () => reject(req.error);
     });
   }
@@ -47,6 +52,11 @@ export const db = {
       }
     }
   },
+  // Imágenes del espacio de trabajo: {id, name, type, blob, size, updated}
+  getAsset: (id) => run('assets', 'readonly', (s) => s.get(id)),
+  allAssets: () => run('assets', 'readonly', (s) => s.getAll()),
+  putAsset: (asset) => run('assets', 'readwrite', (s) => { s.put(asset); }),
+  deleteAsset: (id) => run('assets', 'readwrite', (s) => { s.delete(id); }),
   get: (key) => run('kv', 'readonly', (s) => s.get(key)),
   set: (key, value) => run('kv', 'readwrite', (s) => { s.put(value, key); }),
 };

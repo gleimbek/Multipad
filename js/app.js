@@ -5,6 +5,7 @@ import { LANGS, langById, langExtension, detectLang } from './langs.js';
 import { t, getLang, setLang, applyI18n, detectBrowserLang } from './i18n.js';
 import { $, el, icon, uid, debounce, toast, openModal, promptModal, confirmModal, pickModal, infoModal } from './util.js';
 import { createRunner, runKind } from './runner.js';
+import { lintFor, LINTED } from './lint.js';
 
 const TAB_MIME = 'application/x-multipad-tab';
 const isTouch = () => matchMedia('(pointer: coarse)').matches;
@@ -77,7 +78,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openMenu
 const SETTINGS_KEY = 'multipad:settings';
 const DEFAULTS = {
   theme: 'auto', fontSize: 14, wrap: window.innerWidth < 700, tabSize: 4, whitespace: false, autocomplete: true, mobileKeys: 'auto',
-  uiLang: detectBrowserLang(), judgeUrl: 'https://ce.judge0.com', judgeKey: '',
+  lint: true, uiLang: detectBrowserLang(), judgeUrl: 'https://ce.judge0.com', judgeKey: '',
 };
 const settings = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'));
 setLang(settings.uiLang);
@@ -102,6 +103,7 @@ const comp = {
   ws: new CM.Compartment(),
   ac: new CM.Compartment(),
   phrases: new CM.Compartment(),
+  lint: new CM.Compartment(),
 };
 
 // Textos internos de CodeMirror (buscar, reemplazar, ir a línea).
@@ -112,7 +114,9 @@ const cmPhrases = () => (getLang() === 'es' ? CM.EditorState.phrases.of({
   'current match': 'coincidencia actual', 'on line': 'en la línea', 'replaced match on line $': 'reemplazada en la línea $',
   'replaced $ matches': '$ reemplazos', 'Folded lines': 'Líneas plegadas', 'Unfolded lines': 'Líneas desplegadas',
   'Fold line': 'Plegar línea', 'Unfold line': 'Desplegar línea', 'folded code': 'código plegado', 'unfold': 'desplegar',
+  'Diagnostics': 'Errores', 'No diagnostics': 'Sin errores', 'Go to next problem': 'Ir al siguiente error',
 }) : []);
+const lintExt = (lang) => (settings.lint ? lintFor(lang) : []);
 
 const themeExt = () => (resolvedTheme() === 'dark' ? CM.oneDark : []);
 const wrapExt = () => (settings.wrap ? CM.EditorView.lineWrapping : []);
@@ -133,6 +137,9 @@ function applySettings() {
     setLang(settings.uiLang);
     document.documentElement.lang = getLang();
     applyI18n(document);
+  }
+  for (const d of docs.values()) {
+    for (const v of d.views.values()) v.dispatch({ effects: comp.lint.reconfigure(lintExt(d.rec.lang)) });
   }
   for (const v of allViews()) {
     v.dispatch({
@@ -331,7 +338,7 @@ function broadcastMeta(d, keys) {
   bc.postMessage({ type: 'meta', docId: d.rec.id, patch, from: WID });
 }
 
-async function createDoc({ name, content = '', savedContent = '', handle = null, lang }) {
+async function createDoc({ name, content = '', savedContent = '', handle = null, lang, dir = null }) {
   const text = normalize(content);
   const rec = {
     id: 'd' + uid() + Date.now().toString(36),
@@ -341,6 +348,7 @@ async function createDoc({ name, content = '', savedContent = '', handle = null,
     savedContent: normalize(savedContent),
     eol: /\r\n/.test(content) ? 'CRLF' : 'LF',
     handle,
+    dir,
     created: Date.now(),
     updated: Date.now(),
   };
@@ -374,6 +382,45 @@ async function docTextById(id) {
   return r ? { id, name: r.name, lang: r.lang, text: r.content } : null;
 }
 
+// Marca en el editor los errores que reportó la ejecución (Python, JavaScript, compiladores).
+function markErrors(docId, errors) {
+  const d = docs.get(docId);
+  if (!d) return;
+  if (!errors.length) {
+    // Nueva ejecución: se quitan los errores de la anterior y se vuelve a revisar la sintaxis.
+    for (const v of d.views.values()) {
+      if (settings.lint && LINTED.has(d.rec.lang)) CM.forceLinting(v);
+      else v.dispatch(CM.setDiagnostics(v.state, []));
+    }
+    return;
+  }
+  for (const v of d.views.values()) {
+    const doc = v.state.doc;
+    const diagnostics = [];
+    for (const e of errors) {
+      if (!e.line || e.line < 1 || e.line > doc.lines) continue;
+      const line = doc.line(e.line);
+      const indent = line.text.length - line.text.trimStart().length;
+      let from = line.from + (e.col ? Math.min(Math.max(e.col - 1, 0), line.length) : indent);
+      let to = e.col ? Math.min(from + 1, line.to) : line.to;
+      if (to <= from) { from = line.from; to = Math.max(line.to, line.from + 1); }
+      diagnostics.push({ from: Math.min(from, doc.length), to: Math.min(to, doc.length), severity: e.severity || 'error', message: t('lint.runtime', { msg: e.message }), source: e.source });
+    }
+    // Se conservan los errores de sintaxis que ya marcó el linter.
+    const keep = [];
+    CM.forEachDiagnostic(v.state, (dg, from, to) => { if (!String(dg.message).startsWith(t('lint.runtime', { msg: '' }))) keep.push({ ...dg, from, to }); });
+    v.dispatch(CM.setDiagnostics(v.state, [...keep, ...diagnostics]));
+  }
+  if (errors.length && docs.get(docId)) {
+    const pane = layout.panes.find((p) => p.tabs.includes(docId));
+    const v = pane && d.views.get(pane.id);
+    const first = errors.find((e) => e.line);
+    if (v && first && first.line <= v.state.doc.lines) {
+      v.dispatch({ effects: CM.EditorView.scrollIntoView(v.state.doc.line(first.line).from, { y: 'center' }) });
+    }
+  }
+}
+
 /* ------------------------------------------------------------------ vistas del editor */
 
 function createView(d, paneId) {
@@ -398,6 +445,8 @@ function createView(d, paneId) {
         CM.highlightActiveLine(),
         CM.highlightSelectionMatches(),
         CM.search({ top: true }),
+        CM.lintGutter(),
+        comp.lint.of(lintExt(d.rec.lang)),
         CM.keymap.of([
           ...CM.closeBracketsKeymap,
           ...CM.defaultKeymap,
@@ -405,6 +454,7 @@ function createView(d, paneId) {
           ...CM.historyKeymap,
           ...CM.foldKeymap,
           ...CM.completionKeymap,
+          ...CM.lintKeymap,
           CM.indentWithTab,
         ]),
         comp.lang.of(langExtension(d.rec.lang)),
@@ -448,7 +498,7 @@ function onViewUpdate(u, d) {
     }
     scheduleDirty(d);
   }
-  if ((u.selectionSet || u.docChanged || u.focusChanged) && u.view === activeView()) updateStatus();
+  if (u.view === activeView() && (u.selectionSet || u.docChanged || u.focusChanged || u.transactions.some((tr) => tr.effects.length))) updateStatus();
 }
 
 function destroyView(docId, paneId) {
@@ -943,7 +993,13 @@ async function findDocByHandle(handle) {
   return null;
 }
 
-async function openFileObject(file, handle, paneId) {
+async function openFileObject(file, handle, paneId, dir = null) {
+  if (isImageFile(file)) {
+    // Las imágenes no se abren como texto: se guardan en el espacio de trabajo y se ven en la vista previa.
+    const asset = dir ? { name: file.name, blob: file, size: file.size } : await addImage(file);
+    if (asset) runner.showImage(asset);
+    return;
+  }
   if (file.size > 8 * 1024 * 1024) {
     const ok = await confirmModal({ title: t('file.bigTitle'), text: t('file.bigText', { name: file.name, mb: (file.size / 1048576).toFixed(1) }), buttons: [t('ui.cancel'), t('file.openAnyway')] });
     if (!ok) return;
@@ -953,12 +1009,22 @@ async function openFileObject(file, handle, paneId) {
     toast(t('file.binary', { name: file.name }));
     return;
   }
-  const rec = await createDoc({ name: file.name, content: text, savedContent: text, handle });
+  const rec = await createDoc({ name: file.name, content: text, savedContent: text, handle, dir });
   await openDocInPane(rec.id, paneId || focusedPane().id);
 }
 
-async function openHandle(handle, paneId) {
+// dir: {folderId, path: [...]} cuando el archivo viene de una carpeta abierta (para encontrar sus imágenes).
+async function openHandle(handle, paneId, dir = null) {
+  if (IMAGE_RE.test(handle.name)) {
+    if (!(await verifyPermission(handle, false))) return;
+    await openFileObject(await handle.getFile(), handle, paneId, dir);
+    return;
+  }
   const existing = await findDocByHandle(handle);
+  if (existing && dir) {
+    const d = await loadDoc(existing);
+    if (d && !d.rec.dir) { d.rec.dir = dir; persist(d); }
+  }
   if (existing) {
     const where = layout.panes.find((p) => p.tabs.includes(existing));
     if (where) activateTab(where.id, existing);
@@ -966,7 +1032,7 @@ async function openHandle(handle, paneId) {
     return;
   }
   if (!(await verifyPermission(handle, false))) return;
-  await openFileObject(await handle.getFile(), handle, paneId);
+  await openFileObject(await handle.getFile(), handle, paneId, dir);
 }
 
 async function openFiles() {
@@ -1104,7 +1170,7 @@ async function renameDoc(d) {
 
 function setDocLang(d, lang, save = true) {
   d.rec.lang = lang;
-  for (const v of d.views.values()) v.dispatch({ effects: comp.lang.reconfigure(langExtension(lang)) });
+  for (const v of d.views.values()) v.dispatch({ effects: [comp.lang.reconfigure(langExtension(lang)), comp.lint.reconfigure(lintExt(lang))] });
   if (save) { persist(d); broadcastMeta(d, ['lang']); }
   rerenderTabsFor(d.rec.id);
   updateStatus();
@@ -1176,7 +1242,7 @@ async function renderTree() {
     if (expanded.has(f.id)) {
       const box = el('div');
       root.append(box);
-      renderDir(f.handle, box, 1, f.id).catch(() => {
+      renderDir(f.handle, box, 1, f.id, f.id, []).catch(() => {
         box.textContent = '';
         box.append(el('div', { class: 'tree-item file', style: 'padding-left:28px', text: t('folder.tapToAllow') }));
         expanded.delete(f.id);
@@ -1185,7 +1251,7 @@ async function renderTree() {
   }
 }
 
-async function renderDir(dirHandle, container, depth, key) {
+async function renderDir(dirHandle, container, depth, key, folderId, path) {
   if ((await dirHandle.queryPermission?.({ mode: 'read' })) === 'prompt') throw new Error('permission');
   const entries = [];
   for await (const [name, h] of dirHandle.entries()) entries.push([name, h]);
@@ -1199,14 +1265,14 @@ async function renderDir(dirHandle, container, depth, key) {
       const box = el('div');
       node.addEventListener('click', () => {
         if (expanded.has(k)) { expanded.delete(k); box.textContent = ''; node.firstChild.textContent = '▸'; }
-        else { expanded.add(k); node.firstChild.textContent = '▾'; renderDir(h, box, depth + 1, k); }
+        else { expanded.add(k); node.firstChild.textContent = '▾'; renderDir(h, box, depth + 1, k, folderId, [...path, name]); }
       });
       container.append(node, box);
-      if (expanded.has(k)) renderDir(h, box, depth + 1, k);
+      if (expanded.has(k)) renderDir(h, box, depth + 1, k, folderId, [...path, name]);
     } else {
-      const node = el('div', { class: 'tree-item file', style: pad, title: name }, el('span', { class: 'caret' }), fileBadge(detectLang(name), name), el('span', { text: name }));
+      const node = el('div', { class: 'tree-item file', style: pad, title: name }, el('span', { class: 'caret' }), IMAGE_RE.test(name) ? el('span', { class: 'fi wide', style: '--fi-bg:#c03ad8;--fi-fg:#fff', 'aria-hidden': 'true', text: 'IMG' }) : fileBadge(detectLang(name), name), el('span', { text: name }));
       node.addEventListener('click', async () => {
-        await openHandle(h);
+        await openHandle(h, null, { folderId, path });
         if (window.innerWidth < 700) toggleSidebar(false);
       });
       container.append(node);
@@ -1215,6 +1281,143 @@ async function renderDir(dirHandle, container, depth, key) {
 }
 
 /* ------------------------------------------------------------------ lista de documentos del espacio */
+
+/* ------------------------------------------------------------------ imágenes */
+
+const IMAGE_RE = /\.(png|jpe?g|gif|webp|avif|bmp|ico)$/i;
+const isImageFile = (f) => IMAGE_RE.test(f.name) || (f.type?.startsWith('image/') && f.type !== 'image/svg+xml');
+const imageType = (name) => ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp', ico: 'image/x-icon' }[name.split('.').pop().toLowerCase()] || 'application/octet-stream');
+const dataUrlCache = new Map();
+
+function blobToDataUrl(blob, key) {
+  if (key && dataUrlCache.has(key)) return Promise.resolve(dataUrlCache.get(key));
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => { if (key) dataUrlCache.set(key, r.result); resolve(r.result); };
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+}
+
+async function addImage(file, { quiet = false } = {}) {
+  if (file.size > 15 * 1024 * 1024) {
+    toast(t('img.tooBig', { name: file.name, mb: (file.size / 1048576).toFixed(1) }));
+    return null;
+  }
+  const all = await db.allAssets();
+  const same = all.find((a) => a.name.toLowerCase() === file.name.toLowerCase());
+  const asset = {
+    id: same?.id || 'a' + uid(),
+    name: file.name,
+    type: file.type || imageType(file.name),
+    blob: new Blob([file], { type: file.type || imageType(file.name) }),
+    size: file.size,
+    updated: Date.now(),
+  };
+  await db.putAsset(asset);
+  bc.postMessage({ type: 'assets-changed', from: WID });
+  refreshImages();
+  runner?.onAssetsChanged();
+  if (!quiet) toast(t('img.added', { name: file.name }), { timeout: 6000 });
+  return asset;
+}
+
+const formatSize = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB');
+const thumbUrls = new Map();
+
+const refreshImages = debounce(async () => {
+  if ($('#sidebar').hidden) return;
+  const list = $('#imgList');
+  const all = (await db.allAssets()).sort((a, b) => a.name.localeCompare(b.name));
+  list.textContent = '';
+  if (!all.length) { list.append(el('div', { class: 'tree-empty', text: t('img.none') })); return; }
+  for (const a of all) {
+    const key = a.id + ':' + a.updated;
+    if (!thumbUrls.has(key)) thumbUrls.set(key, URL.createObjectURL(a.blob));
+    const del = el('button', { class: 'del', title: t('img.remove'), 'aria-label': t('img.remove') }, '×');
+    del.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const ok = await confirmModal({ title: t('img.removeTitle', { name: a.name }), text: t('img.removeText'), buttons: [t('ui.cancel'), t('docs.removeOk')] });
+      if (!ok) return;
+      await db.deleteAsset(a.id);
+      dataUrlCache.clear();
+      bc.postMessage({ type: 'assets-changed', from: WID });
+      refreshImages();
+      runner?.onAssetsChanged();
+    });
+    const item = el('div', { class: 'img-item', title: a.name, draggable: 'true' },
+      el('img', { src: thumbUrls.get(key), alt: '' }),
+      el('span', { class: 'name', text: a.name }),
+      el('span', { class: 'size', text: formatSize(a.size) }),
+      del);
+    item.addEventListener('click', () => { runner.showImage(a); if (window.innerWidth < 700) toggleSidebar(false); });
+    // Arrastrar la imagen al editor escribe su nombre.
+    item.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', a.name));
+    list.append(item);
+  }
+}, 150);
+
+async function addImagesFromPicker() {
+  $('#imageInput').click();
+}
+
+$('#imageInput').addEventListener('change', async (e) => {
+  const files = [...e.target.files];
+  for (const f of files) await addImage(f, { quiet: files.length > 1 });
+  if (files.length > 1) toast(t('img.addedMany', { n: files.length }));
+  e.target.value = '';
+});
+$('#btnAddImages').addEventListener('click', () => addImagesFromPicker());
+
+// Busca un archivo relativo a la carpeta del documento (img/foto.png, ../assets/logo.svg, /css/a.css).
+async function fileInFolder(rel, hostRec) {
+  if (!hostRec?.dir) return null;
+  const folder = folders.find((f) => f.id === hostRec.dir.folderId);
+  if (!folder) return null;
+  try {
+    if ((await folder.handle.queryPermission?.({ mode: 'read' })) === 'prompt') return null;
+    const parts = rel.startsWith('/') ? [] : [...hostRec.dir.path];
+    for (const seg of rel.replace(/^\/+/, '').split('/')) {
+      if (!seg || seg === '.') continue;
+      if (seg === '..') parts.pop(); else parts.push(seg);
+    }
+    if (!parts.length) return null;
+    let dir = folder.handle;
+    for (const seg of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(seg);
+    const fh = await dir.getFileHandle(parts[parts.length - 1]);
+    return { file: await fh.getFile(), key: folder.id + ':' + parts.join('/') };
+  } catch {
+    return null;
+  }
+}
+
+async function hostRecord(hostId) {
+  return hostId ? (docs.get(hostId)?.rec || await db.getDoc(hostId)) : null;
+}
+
+// Devuelve un data: URL para una imagen (u otro recurso) que pide la vista previa.
+async function resolveAsset(url, hostId) {
+  let rel;
+  try { rel = decodeURIComponent(url.split(/[?#]/)[0]); } catch { rel = url.split(/[?#]/)[0]; }
+  const host = await hostRecord(hostId);
+  const inFolder = await fileInFolder(rel, host);
+  if (inFolder) return blobToDataUrl(inFolder.file, inFolder.key + ':' + inFolder.file.lastModified + ':' + inFolder.file.size);
+  const base = rel.split('/').pop().toLowerCase();
+  const asset = (await db.allAssets()).find((a) => a.name.toLowerCase() === base);
+  if (asset) return blobToDataUrl(asset.blob, asset.id + ':' + asset.updated);
+  if (base.endsWith('.svg')) {
+    const svg = (await allDocTexts()).find((x) => x.name.toLowerCase() === base);
+    if (svg) return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg.text);
+  }
+  return null;
+}
+
+// Texto de un .css o .js enlazado que no está abierto en Multipad pero sí en la carpeta del HTML.
+async function resolveText(url, hostId) {
+  const host = await hostRecord(hostId);
+  const found = await fileInFolder(url.split(/[?#]/)[0], host);
+  return found ? found.file.text() : null;
+}
 
 const refreshDocList = debounce(async () => {
   if ($('#sidebar').hidden) return;
@@ -1268,7 +1471,7 @@ function toggleSidebar(force) {
   sb.hidden = !show;
   layout.sidebar = show;
   saveLayout();
-  if (show) { renderTree(); refreshDocList(); }
+  if (show) { renderTree(); refreshDocList(); refreshImages(); }
   for (const v of allViews()) v.requestMeasure();
   syncActivity();
 }
@@ -1396,6 +1599,11 @@ bc.addEventListener('message', async (e) => {
       refreshDocList();
       break;
     case 'layout':
+    case 'assets-changed':
+      dataUrlCache.clear();
+      refreshImages();
+      runner?.onAssetsChanged();
+      break;
     case 'docs-changed':
       refreshDocList();
       break;
@@ -1577,7 +1785,7 @@ function showShortcuts() {
     ['sc.new', 'Alt+N'], ['sc.open', 'Ctrl+O'], ['sc.save', 'Ctrl+S / Ctrl+Shift+S'],
     ['sc.close', 'Alt+W'], ['sc.nextTab', 'Ctrl+Tab / Ctrl+Shift+Tab'], ['sc.tabN', 'Alt+1 … Alt+9'],
     ['sc.run', 'F5 / Ctrl+Enter'], ['sc.stop', 'Shift+F5'], ['sc.runPanel', 'Ctrl+Shift+P'],
-    ['sc.find', 'Ctrl+F / Ctrl+H'], ['sc.goto', 'Ctrl+G'], ['sc.comment', 'Ctrl+/'],
+    ['sc.find', 'Ctrl+F / Ctrl+H'], ['sc.goto', 'Ctrl+G'], ['sc.nextError', 'F8 / Ctrl+Shift+M'], ['sc.comment', 'Ctrl+/'],
     ['sc.dupLine', 'Shift+Alt+↓'], ['sc.moveLine', 'Alt+↑ / Alt+↓'], ['sc.multi', 'Ctrl+D'],
     ['sc.split', 'Ctrl+\\'], ['sc.moveTab', 'Alt+M'], ['sc.newWindow', 'Alt+Shift+N'],
     ['sc.sidebar', 'Ctrl+B'], ['sc.zoom', 'Ctrl+= / Ctrl+- / Ctrl+0'], ['sc.wrap', 'Alt+Z'], ['sc.language', 'Alt+L'],
@@ -1632,6 +1840,8 @@ const cmds = {
   wrap: () => { settings.wrap = !settings.wrap; saveSettings(); },
   whitespace: () => { settings.whitespace = !settings.whitespace; saveSettings(); },
   autocomplete: () => { settings.autocomplete = !settings.autocomplete; saveSettings(); },
+  lint: () => { settings.lint = !settings.lint; saveSettings(); },
+  nextError: runCM(CM.nextDiagnostic),
   mobileKeys: () => {
     const showing = !$('#mobileKeys').hidden;
     settings.mobileKeys = showing ? 'off' : 'on';
@@ -1714,6 +1924,7 @@ const MENUS = {
     'sep',
     { label: t('cmd.find'), kbd: 'Ctrl+F', action: cmds.find },
     { label: t('cmd.goto'), kbd: 'Ctrl+G', action: cmds.gotoLine },
+    { label: t('cmd.nextError'), kbd: 'F8', action: cmds.nextError },
     'sep',
     { label: t('cmd.comment'), kbd: 'Ctrl+/', action: cmds.comment },
     { label: t('cmd.dupLine'), kbd: 'Shift+Alt+↓', action: cmds.duplicateLine },
@@ -1738,6 +1949,7 @@ const MENUS = {
     { label: t('cmd.wrap'), kbd: 'Alt+Z', checked: settings.wrap, action: cmds.wrap },
     { label: t('cmd.whitespace'), checked: settings.whitespace, action: cmds.whitespace },
     { label: t('cmd.autocomplete'), checked: settings.autocomplete, action: cmds.autocomplete },
+    { label: t('cmd.lint'), checked: settings.lint, action: cmds.lint },
     { label: t('cmd.mobileKeys'), checked: !$('#mobileKeys').hidden, action: cmds.mobileKeys },
     { label: t('cmd.tabSize'), action: cmds.tabSize },
     'sep',
@@ -1850,6 +2062,7 @@ $('#actSettings').addEventListener('click', () => {
     { label: t('cmd.wrap'), kbd: 'Alt+Z', checked: settings.wrap, action: cmds.wrap },
     { label: t('cmd.whitespace'), checked: settings.whitespace, action: cmds.whitespace },
     { label: t('cmd.autocomplete'), checked: settings.autocomplete, action: cmds.autocomplete },
+    { label: t('cmd.lint'), checked: settings.lint, action: cmds.lint },
     { label: t('cmd.tabSize'), action: cmds.tabSize },
     'sep',
     { label: t('cmd.server'), action: cmds.server },
@@ -1864,6 +2077,7 @@ $('#btnUiLang').addEventListener('click', () => cmds.uiLang());
 $('#langBadge').addEventListener('click', () => cmds.language());
 $('#winLabel').addEventListener('click', () => cmds.renameWindow());
 $('#stLang').addEventListener('click', () => cmds.language());
+$('#stProblems').addEventListener('click', () => { const v = activeView(); if (v) { CM.openLintPanel(v); CM.nextDiagnostic(v); } });
 $('#stEol').addEventListener('click', () => cmds.eol());
 $('#stIndent').addEventListener('click', () => cmds.tabSize());
 
@@ -1961,6 +2175,7 @@ function updateStatus() {
     $('#stSel').textContent = '';
     $('#stLang').textContent = '';
     $('#stEol').textContent = '';
+    $('#stProblems').hidden = true;
     badge.hidden = true;
     $('#btnRun').disabled = true;
     updateTitle();
@@ -1973,6 +2188,10 @@ function updateStatus() {
   const selected = state.selection.ranges.reduce((n, r) => n + (r.to - r.from), 0);
   const cursors = state.selection.ranges.length;
   $('#stSel').textContent = (selected ? t('status.sel', { n: selected }) : t('status.lines', { n: state.doc.lines })) + (cursors > 1 ? ' · ' + t('status.cursors', { n: cursors }) : '');
+  const problems = CM.diagnosticCount(state);
+  const pb = $('#stProblems');
+  pb.hidden = !problems;
+  pb.textContent = problems ? t('status.problems', { n: problems }) : '';
   const label = langLabel(d.rec.lang);
   $('#stLang').textContent = label;
   $('#stEol').textContent = d.rec.eol || 'LF';
@@ -2063,6 +2282,10 @@ async function start() {
     openWindow: (url, name, otherScreen) => openWindowUrl(url, name, otherScreen),
     onResize: () => { for (const v of allViews()) v.requestMeasure(); syncActivity(); },
     onRunning: (on) => { $('#btnRun').classList.toggle('running', on); },
+    markErrors,
+    resolveAsset: (url, hostId) => resolveAsset(url, hostId),
+    resolveText: (url, hostId) => resolveText(url, hostId),
+    assetDataUrl: (a) => blobToDataUrl(a.blob, a.id ? a.id + ':' + a.updated : null),
   });
 
   syncViewport();

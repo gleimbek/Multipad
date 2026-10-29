@@ -10,6 +10,8 @@ No necesita servidor ni base de datos. Es HTML, CSS y JavaScript sin frameworks,
 
 - Interfaz en español e inglés (botón ES/EN arriba a la derecha, o Ver → Idioma de la interfaz). Arranca en el idioma del navegador.
 - Botón **Ejecutar** (F5) con panel de vista previa y consola. Detalle más abajo.
+- Marca errores mientras escribes: subrayado rojo, punto en el margen y contador en la barra de estado (F8 salta al siguiente). Al ejecutar, también marca la línea donde falló Python, JavaScript o el compilador de Java/C/C++.
+- Imágenes en la vista previa: las toma de la carpeta del proyecto (si abriste la carpeta) o de la sección Imágenes del panel lateral.
 - Menú **Lenguaje** como el de Notepad++: lista todos los lenguajes, marca el del documento y deja cambiarlo. El lenguaje actual también se ve junto a Ejecutar y en la barra de estado.
 - Pestañas con indicador de cambios sin guardar, reordenables arrastrando.
 - Hasta 4 paneles por ventana, en fila o en columna, con divisores que se arrastran (doble clic en el divisor los empareja).
@@ -42,6 +44,21 @@ Multipad elige el lenguaje por la extensión. Si no acierta, se cambia desde el 
 | JSON | Revisa que sea válido y lo formatea | Navegador |
 | Java, C, C++, C#, Kotlin, Go, Rust, Ruby, PHP, Bash, TypeScript | Compila y ejecuta | Servidor Judge0 |
 | YAML, PowerShell, JSX, TSX, texto | Solo edición | — |
+
+### Errores
+
+Mientras escribes, Multipad revisa la sintaxis de JavaScript, JSON, HTML (etiquetas sin cerrar o mal cerradas), CSS, Python, Java, PHP, C/C++, Rust, TypeScript, XML y SQL. El mensaje aparece al pasar el mouse (o tocar) el subrayado. Se desactiva en Ver → Marcar errores al escribir.
+
+Los errores de ejecución se marcan en la línea correcta del archivo: el traceback de Python, los errores de JavaScript (también los de un `.js` enlazado desde un HTML) y la salida de compilación de Judge0.
+
+### Imágenes
+
+La vista previa resuelve `<img src>`, `srcset`, `<video poster>` y `url()` de CSS:
+
+1. Si el HTML se abrió desde una carpeta (Abrir carpeta), busca la imagen en esa carpeta respetando la ruta: `img/foto.png`, `../assets/logo.svg`.
+2. Si no, la busca por nombre en la sección Imágenes del panel lateral. Ahí se agregan imágenes con el botón de imagen o arrastrándolas a la ventana.
+
+Las imágenes que cargue JavaScript en tiempo de ejecución (`new Image()`, `fetch`) no se resuelven; para esas conviene usar URLs completas.
 
 El panel tiene dos pestañas: **Vista previa** y **Consola**. Con "En vivo" activado, la vista previa de HTML, CSS y Markdown se actualiza mientras escribes. El botón ⧉ abre la vista previa en una ventana aparte, que puedes llevar al segundo monitor (también: Ejecutar → Vista previa en otra pantalla).
 

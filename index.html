@@ -120,6 +120,15 @@
           <div class="side-head"><span data-i18n="side.docs"></span></div>
           <div id="docList" class="doclist"></div>
         </section>
+        <section class="side-section images">
+          <div class="side-head">
+            <span data-i18n="img.section"></span>
+            <button class="icon-btn small" id="btnAddImages" data-i18n-title="img.add" data-i18n-aria-label="img.add">
+              <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z M4 15l4-4 4 4 3-3 5 5 M15 9h.01" /></svg>
+            </button>
+          </div>
+          <div id="imgList" class="imglist"></div>
+        </section>
       </aside>
 
       <div id="panes"></div>
@@ -199,6 +208,7 @@
     <footer id="statusbar">
       <span id="stPos">Ln 1, Col 1</span>
       <span id="stSel"></span>
+      <button id="stProblems" class="st-btn problems" hidden data-i18n-title="status.problemsTitle"></button>
       <span class="grow"></span>
       <button id="stIndent" class="st-btn"></button>
       <button id="stEol" class="st-btn"></button>
@@ -211,6 +221,7 @@
   <div id="modalLayer" hidden></div>
   <div id="toasts" aria-live="polite"></div>
   <input type="file" id="fileInput" multiple hidden>
+  <input type="file" id="imageInput" multiple accept="image/*" hidden>
 
   <script type="module" src="js/app.js"></script>
 </body>

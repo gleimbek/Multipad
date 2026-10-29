@@ -1,6 +1,20 @@
 // Textos de la interfaz en español e inglés.
 const DICT = {
   es: {
+    'lint.syntax': 'Error de sintaxis', 'lint.unclosed': 'Falta cerrar algo: una llave }, un paréntesis ), un corchete ] o unas comillas.',
+    'lint.htmlMismatch': 'Esta etiqueta de cierre no corresponde a la que está abierta.', 'lint.htmlUnclosed': 'La etiqueta <{tag}> no se cerró (falta </{tag}>).',
+    'lint.runtime': 'Al ejecutar: {msg}',
+    'lint.json.singleQuote': 'En JSON el texto va entre comillas dobles ("), no simples.', 'lint.json.end': 'El JSON termina antes de tiempo: falta cerrar algo.',
+    'lint.json.value': 'Aquí se esperaba un valor: texto entre comillas, número, true, false, null, { } o [ ].', 'lint.json.unclosedString': 'Faltan las comillas de cierre del texto.',
+    'lint.json.trailingComma': 'Sobra esta coma: JSON no permite coma después del último elemento.', 'lint.json.comma': 'Falta una coma entre elementos.',
+    'lint.json.key': 'Las claves de un objeto van entre comillas dobles: "clave".', 'lint.json.colon': 'Falta ":" después de la clave.',
+    'lint.json.extra': 'Sobra contenido después del final del JSON.', 'cmd.lint': 'Marcar errores al escribir', 'cmd.nextError': 'Ir al siguiente error',
+    'status.problems': '{n} error(es)', 'status.problemsTitle': 'Ver la lista de errores (Ctrl+Shift+M). F8 salta al siguiente.',
+    'img.section': 'Imágenes', 'img.none': 'Abre o arrastra imágenes para usarlas en la vista previa.', 'img.add': 'Agregar imágenes',
+    'img.added': 'Imagen agregada: {name}. Úsala en tu HTML con <img src="{name}">.', 'img.addedMany': '{n} imágenes agregadas.',
+    'img.remove': 'Quitar imagen', 'img.removeTitle': 'Quitar "{name}"', 'img.removeText': 'Se quita del espacio de trabajo. El archivo en tu equipo no se toca.',
+    'img.headView': 'Imagen: {name}', 'img.tooBig': '{name} pesa {mb} MB; el máximo para imágenes es 15 MB.',
+    'run.imgMissing': 'No encontré la imagen "{file}". Abre la carpeta del proyecto (Abrir carpeta) o agrega la imagen en el panel lateral.',
     'ui.cancel': 'Cancelar', 'ui.ok': 'Aceptar', 'ui.close': 'Cerrar', 'ui.filter': 'Filtrar…', 'ui.save': 'Guardar',
 
     'menu.file': 'Archivo', 'menu.edit': 'Editar', 'menu.view': 'Ver', 'menu.language': 'Lenguaje', 'menu.run': 'Ejecutar',
@@ -52,7 +66,7 @@ const DICT = {
     'lang.tableTitle': 'Lenguajes y ejecución',
     'lang.tableIntro': 'Multipad elige el lenguaje por la extensión del archivo. Si no acierta, cámbialo desde el menú Lenguaje, la insignia junto a Ejecutar o la barra de estado (Alt+L).',
     'lang.colLang': 'Lenguaje', 'lang.colExt': 'Extensiones', 'lang.colRun': 'Al pulsar Ejecutar (F5)',
-    'lang.tableNote': 'La vista previa de HTML incluye los .css y .js que el HTML enlaza, si están en el espacio de trabajo con el mismo nombre. Las imágenes con ruta relativa no se ven en la vista previa; usa URLs completas.',
+    'lang.tableNote': 'La vista previa de HTML incluye los .css y .js que el HTML enlaza, si están en el espacio de trabajo con el mismo nombre. Las imágenes se toman de la carpeta del proyecto o de la sección Imágenes del panel lateral.',
 
     'where.web': 'Vista previa en vivo (HTML con su CSS y JS)', 'where.markdown': 'Vista previa formateada',
     'where.svg': 'Vista previa (solo archivos .svg)', 'where.js': 'Se ejecuta en el navegador; console.log va a la consola',
@@ -126,7 +140,7 @@ const DICT = {
     'sc.intro': 'En Mac usa Cmd en lugar de Ctrl. En una pestaña normal del navegador, Ctrl+N y Ctrl+W los toma el navegador; por eso hay atajos con Alt.',
     'sc.new': 'Nuevo documento', 'sc.open': 'Abrir archivos', 'sc.save': 'Guardar / Guardar como', 'sc.close': 'Cerrar pestaña',
     'sc.nextTab': 'Pestaña siguiente / anterior', 'sc.tabN': 'Ir a la pestaña N', 'sc.run': 'Ejecutar / vista previa', 'sc.stop': 'Detener ejecución',
-    'sc.runPanel': 'Mostrar u ocultar el panel de ejecución', 'sc.find': 'Buscar / Reemplazar', 'sc.goto': 'Ir a línea', 'sc.comment': 'Comentar línea',
+    'sc.runPanel': 'Mostrar u ocultar el panel de ejecución', 'sc.find': 'Buscar / Reemplazar', 'sc.goto': 'Ir a línea', 'sc.nextError': 'Siguiente error / lista de errores', 'sc.comment': 'Comentar línea',
     'sc.dupLine': 'Duplicar línea', 'sc.moveLine': 'Mover línea', 'sc.multi': 'Seleccionar la siguiente coincidencia',
     'sc.split': 'Dividir panel', 'sc.moveTab': 'Mover pestaña al otro panel', 'sc.newWindow': 'Ventana nueva', 'sc.sidebar': 'Panel lateral',
     'sc.zoom': 'Tamaño de letra', 'sc.wrap': 'Ajuste de línea', 'sc.language': 'Cambiar el lenguaje del documento',
@@ -168,6 +182,20 @@ El botón ES/EN de arriba cambia el idioma. Puedes cerrar este documento cuando 
   },
 
   en: {
+    'lint.syntax': 'Syntax error', 'lint.unclosed': 'Something is not closed: a brace }, parenthesis ), bracket ] or quotes.',
+    'lint.htmlMismatch': 'This closing tag does not match the open one.', 'lint.htmlUnclosed': 'The <{tag}> tag is not closed (missing </{tag}>).',
+    'lint.runtime': 'When run: {msg}',
+    'lint.json.singleQuote': 'JSON strings use double quotes ("), not single quotes.', 'lint.json.end': 'The JSON ends too early: something is not closed.',
+    'lint.json.value': 'A value was expected here: quoted text, number, true, false, null, { } or [ ].', 'lint.json.unclosedString': 'The closing quote of the text is missing.',
+    'lint.json.trailingComma': 'Extra comma: JSON does not allow a comma after the last item.', 'lint.json.comma': 'A comma is missing between items.',
+    'lint.json.key': 'Object keys go in double quotes: "key".', 'lint.json.colon': 'Missing ":" after the key.',
+    'lint.json.extra': 'There is extra content after the end of the JSON.', 'cmd.lint': 'Mark errors while typing', 'cmd.nextError': 'Go to next error',
+    'status.problems': '{n} error(s)', 'status.problemsTitle': 'Show the error list (Ctrl+Shift+M). F8 jumps to the next one.',
+    'img.section': 'Images', 'img.none': 'Open or drop images to use them in the preview.', 'img.add': 'Add images',
+    'img.added': 'Image added: {name}. Use it in your HTML with <img src="{name}">.', 'img.addedMany': '{n} images added.',
+    'img.remove': 'Remove image', 'img.removeTitle': 'Remove "{name}"', 'img.removeText': 'It is removed from the workspace. The file on your device is not touched.',
+    'img.headView': 'Image: {name}', 'img.tooBig': '{name} is {mb} MB; the limit for images is 15 MB.',
+    'run.imgMissing': 'Could not find the image "{file}". Open the project folder (Open folder) or add the image in the sidebar.',
     'ui.cancel': 'Cancel', 'ui.ok': 'OK', 'ui.close': 'Close', 'ui.filter': 'Filter…', 'ui.save': 'Save',
 
     'menu.file': 'File', 'menu.edit': 'Edit', 'menu.view': 'View', 'menu.language': 'Language', 'menu.run': 'Run',
@@ -219,7 +247,7 @@ El botón ES/EN de arriba cambia el idioma. Puedes cerrar este documento cuando 
     'lang.tableTitle': 'Languages and running code',
     'lang.tableIntro': 'Multipad picks the language from the file extension. If it guesses wrong, change it from the Language menu, the badge next to Run, or the status bar (Alt+L).',
     'lang.colLang': 'Language', 'lang.colExt': 'Extensions', 'lang.colRun': 'When you press Run (F5)',
-    'lang.tableNote': 'The HTML preview includes the .css and .js files the HTML links to, if they are in the workspace with the same name. Images with relative paths do not show in the preview; use full URLs.',
+    'lang.tableNote': 'The HTML preview includes the .css and .js files the HTML links to, if they are in the workspace with the same name. Images come from the project folder or from the Images section of the sidebar.',
 
     'where.web': 'Live preview (HTML with its CSS and JS)', 'where.markdown': 'Formatted preview',
     'where.svg': 'Preview (.svg files only)', 'where.js': 'Runs in the browser; console.log goes to the console',
@@ -293,7 +321,7 @@ El botón ES/EN de arriba cambia el idioma. Puedes cerrar este documento cuando 
     'sc.intro': 'On Mac use Cmd instead of Ctrl. In a regular browser tab, Ctrl+N and Ctrl+W belong to the browser; that is why there are Alt shortcuts.',
     'sc.new': 'New document', 'sc.open': 'Open files', 'sc.save': 'Save / Save as', 'sc.close': 'Close tab',
     'sc.nextTab': 'Next / previous tab', 'sc.tabN': 'Go to tab N', 'sc.run': 'Run / preview', 'sc.stop': 'Stop running',
-    'sc.runPanel': 'Show or hide the run panel', 'sc.find': 'Find / Replace', 'sc.goto': 'Go to line', 'sc.comment': 'Comment line',
+    'sc.runPanel': 'Show or hide the run panel', 'sc.find': 'Find / Replace', 'sc.goto': 'Go to line', 'sc.nextError': 'Next error / error list', 'sc.comment': 'Comment line',
     'sc.dupLine': 'Duplicate line', 'sc.moveLine': 'Move line', 'sc.multi': 'Select next occurrence',
     'sc.split': 'Split pane', 'sc.moveTab': 'Move tab to other pane', 'sc.newWindow': 'New window', 'sc.sidebar': 'Sidebar',
     'sc.zoom': 'Text size', 'sc.wrap': 'Word wrap', 'sc.language': 'Change document language',
