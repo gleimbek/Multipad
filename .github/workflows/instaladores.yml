@@ -60,13 +60,8 @@ jobs:
       - run: npm ci
       - run: node tools/android-www.js
       - run: npx cap add android
-      - name: Íconos de la app
-        continue-on-error: true
-        run: |
-          mkdir -p assets
-          cp icons/icon-512.png assets/icon-only.png
-          cp icons/icon-maskable-512.png assets/icon-foreground.png
-          npx --yes @capacitor/assets generate --android --iconBackgroundColor '#0b1020' --splashBackgroundColor '#0b1020'
+      - name: Íconos de la app (desde assets/)
+        run: npx --yes @capacitor/assets generate --android --iconBackgroundColor '#0b1020' --splashBackgroundColor '#0b1020'
       - run: npx cap sync android
       - name: Compilar el .apk
         working-directory: android
