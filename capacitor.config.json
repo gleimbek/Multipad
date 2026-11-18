@@ -1,0 +1,6 @@
+{
+  "appId": "com.leimbekwebstudio.multipad",
+  "appName": "Multipad",
+  "webDir": "android-www",
+  "android": { "backgroundColor": "#0b1020" }
+}

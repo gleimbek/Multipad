@@ -1,0 +1,89 @@
+{
+  "name": "multipad",
+  "productName": "Multipad",
+  "version": "1.3.0",
+  "description": "Editor de código con pestañas, paneles divididos y varias ventanas.",
+  "author": "Gustavo Leimbek",
+  "homepage": "https://gleimbek.github.io/multipad/",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --publish never",
+    "android:prepare": "node tools/android-www.js"
+  },
+  "devDependencies": {
+    "electron": "^45.3.4",
+    "electron-builder": "^26.18.0",
+    "@capacitor/cli": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/android": "^8.6.2"
+  },
+  "build": {
+    "appId": "com.leimbekwebstudio.multipad",
+    "productName": "Multipad",
+    "copyright": "Leimbek Web Studio",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**",
+      "index.html",
+      "preview.html",
+      "manifest.webmanifest",
+      "css/**",
+      "js/**",
+      "vendor/**",
+      "icons/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icons/icon-512.png",
+      "artifactName": "Multipad-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Multipad"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "icon": "icons/icon-512.png",
+      "category": "public.app-category.developer-tools",
+      "identity": "-",
+      "artifactName": "Multipad.${ext}"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icons/icon-512.png",
+      "category": "Development",
+      "artifactName": "Multipad.${ext}",
+      "syncDesktopName": true
+    }
+  },
+  "desktopName": "multipad.desktop"
+}

@@ -186,3 +186,34 @@ icons/                  íconos
 ```
 
 vendor/codemirror.js ya viene compilado, así que no hace falta npm para usar ni publicar la app. Si algún día quieres agregar un lenguaje, el paquete se regenera con esbuild a partir de los paquetes @codemirror/*.
+
+## Instaladores (Windows, Mac, Linux y Android)
+
+Además de instalarse desde el navegador, Multipad se empaqueta como programa:
+
+- **Windows, Mac y Linux:** con Electron (`electron/main.js`). Sirve los mismos archivos de la app desde `app://multipad`, así funcionan las varias ventanas, abrir carpetas y guardar directo en el archivo.
+- **Android:** con Capacitor (`capacitor.config.json` y `tools/android-www.js`).
+
+GitHub Actions (`.github/workflows/instaladores.yml`) genera los cuatro archivos y los publica en un release cada vez que subes una etiqueta que empieza con `v`:
+
+```bash
+git tag v1.3.0
+git push origin v1.3.0
+```
+
+Los archivos quedan con nombres fijos (`Multipad-Setup.exe`, `Multipad.dmg`, `Multipad.AppImage`, `Multipad.apk`), así que el enlace `https://github.com/gleimbek/Multipad/releases/latest/download/<archivo>` siempre apunta a la versión más reciente. Para que cualquiera pueda descargarlos, el repositorio tiene que ser público.
+
+Para probar la versión de escritorio en tu computadora:
+
+```bash
+npm install
+npm start          # abre Multipad en una ventana de Electron
+npm run dist       # genera el instalador de tu sistema en dist/
+```
+
+Notas:
+
+- Windows muestra un aviso de "editor desconocido" la primera vez, porque el instalador no tiene firma de código.
+- En Mac el archivo tiene firma ad hoc, no de Apple. La primera vez hay que abrirlo desde Configuración del Sistema → Privacidad y seguridad → Abrir de todos modos.
+- El .apk de Android es una compilación de depuración: se instala permitiendo "fuentes desconocidas", pero no sirve para Google Play.
+- Al publicar cambios, sube también `version` en package.json además de `VERSION` en sw.js.
