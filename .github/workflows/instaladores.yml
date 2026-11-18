@@ -1,6 +1,7 @@
 # Genera los instaladores de Multipad y los publica en GitHub Releases.
 # Para publicar una versión: crea una etiqueta que empiece con "v" (por ejemplo v1.3.0) y súbela.
 #   git tag v1.3.0 && git push origin v1.3.0
+# En cada pull request también se generan, para comprobar que compilan.
 # También se puede correr a mano desde la pestaña Actions; en ese caso solo genera los archivos
 # (aparecen como "artifacts" de la ejecución) sin crear un release.
 name: Instaladores
@@ -8,6 +9,7 @@ name: Instaladores
 on:
   push:
     tags: ['v*']
+  pull_request:
   workflow_dispatch:
 
 permissions:
