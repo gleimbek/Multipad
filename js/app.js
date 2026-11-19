@@ -3,7 +3,7 @@ import * as CM from '../vendor/codemirror.js';
 import { db } from './db.js';
 import { LANGS, langById, langExtension, detectLang } from './langs.js';
 import { t, getLang, setLang, applyI18n, detectBrowserLang } from './i18n.js';
-import { $, el, icon, uid, debounce, toast, openModal, promptModal, confirmModal, pickModal, infoModal } from './util.js';
+import { $, el, icon, uid, debounce, toast, openModal, promptModal, confirmModal, pickModal, infoModal, makeZip } from './util.js';
 import { createRunner, runKind } from './runner.js';
 import { lintFor, LINTED } from './lint.js';
 
@@ -338,7 +338,7 @@ function broadcastMeta(d, keys) {
   bc.postMessage({ type: 'meta', docId: d.rec.id, patch, from: WID });
 }
 
-async function createDoc({ name, content = '', savedContent = '', handle = null, lang, dir = null }) {
+async function createDoc({ name, content = '', savedContent = '', handle = null, lang, dir = null, folder = '' }) {
   const text = normalize(content);
   const rec = {
     id: 'd' + uid() + Date.now().toString(36),
@@ -349,6 +349,7 @@ async function createDoc({ name, content = '', savedContent = '', handle = null,
     eol: /\r\n/.test(content) ? 'CRLF' : 'LF',
     handle,
     dir,
+    folder,
     created: Date.now(),
     updated: Date.now(),
   };
@@ -1466,33 +1467,334 @@ async function resolveText(url, hostId) {
   return found ? found.file.text() : null;
 }
 
+// Documentos del espacio de trabajo, organizados en carpetas.
+// Cada documento guarda su carpeta en rec.folder ('' = sin carpeta, 'web/css' = subcarpeta).
+// La lista de carpetas vive en kv 'wsFolders', así existen aunque estén vacías.
+const DOC_DRAG = 'application/x-multipad-doc';
+const collapsedFolders = new Set();
+const folderLeaf = (p) => p.split('/').pop();
+const parentOf = (p) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '');
+const inFolder = (docFolder, p) => (docFolder || '') === p || (docFolder || '').startsWith(p + '/');
+
+async function getWsFolders() {
+  return (await db.get('wsFolders')) || [];
+}
+
+async function setWsFolders(list) {
+  await db.set('wsFolders', [...new Set(list)].sort((a, b) => a.localeCompare(b)));
+  bc.postMessage({ type: 'docs-changed', from: WID });
+  refreshDocList();
+}
+
 const refreshDocList = debounce(async () => {
   if ($('#sidebar').hidden) return;
-  const all = (await db.allDocs()).sort((a, b) => b.updated - a.updated);
+  const all = (await db.allDocs()).sort((a, b) => a.name.localeCompare(b.name));
+  const folders = await getWsFolders();
+  for (const r of all) {
+    let p = r.folder || '';
+    while (p && !folders.includes(p)) { folders.push(p); p = parentOf(p); }
+  }
+  folders.sort((a, b) => a.localeCompare(b));
   const list = $('#docList');
   list.textContent = '';
-  if (!all.length) {
+  if (!all.length && !folders.length) {
     list.append(el('div', { class: 'tree-empty', text: t('docs.none') }));
     return;
   }
-  for (const r of all) {
-    const live = docs.get(r.id);
-    const content = live ? getText(live) : r.content;
-    const dirty = content !== (r.savedContent ?? '');
-    const del = el('button', { class: 'del', title: t('docs.remove'), 'aria-label': t('docs.remove') }, '×');
-    del.addEventListener('click', (e) => { e.stopPropagation(); deleteFromWorkspace(r.id, r.name, dirty); });
-    const item = el('div', { class: 'doc-item', title: r.name + (r.handle ? '' : ' · ' + t('docs.onlyWorkspace')) },
-      fileBadge(r.lang, r.name),
-      el('span', { class: 'name' }, dirty ? el('span', { class: 'dirty-mark', text: '● ' }) : null, r.name),
-      el('span', { class: 'open-dot' + (isOpenAnywhere(r.id) ? '' : ' off') }),
-      del);
-    item.addEventListener('click', async () => {
-      await showDoc(r.id);
-      if (window.innerWidth < 700) toggleSidebar(false);
-    });
-    list.append(item);
-  }
+  const draw = (parent, depth) => {
+    for (const f of folders.filter((p) => parentOf(p) === parent)) {
+      list.append(folderRow(f, depth, all));
+      if (!collapsedFolders.has(f)) draw(f, depth + 1);
+    }
+    for (const r of all.filter((x) => (x.folder || '') === parent)) list.append(docRow(r, depth));
+  };
+  draw('', 0);
 }, 200);
+
+function rowButton(cls, label, text, onClick) {
+  const b = el('button', { class: cls, title: label, 'aria-label': label, type: 'button' }, text);
+  b.addEventListener('click', (e) => { e.stopPropagation(); onClick(b); });
+  return b;
+}
+
+const menuPos = (b) => { const r = b.getBoundingClientRect(); return { x: r.left, y: r.bottom + 2 }; };
+
+function docRow(r, depth) {
+  const live = docs.get(r.id);
+  const content = live ? getText(live) : r.content;
+  const dirty = content !== (r.savedContent ?? '');
+  const open = isOpenAnywhere(r.id);
+  const openIco = el('span', { class: 'open-ico', title: open ? t('docs.openIn') : '' });
+  if (open) { openIco.append(icon('M3 5h18v14H3z M3 9h18')); openIco.setAttribute('aria-label', t('docs.openIn')); }
+  const item = el('div', {
+    class: 'doc-item', draggable: 'true', style: `padding-left:${8 + depth * 14}px`,
+    title: r.name + (r.handle ? '' : ' · ' + t('docs.onlyWorkspace')),
+  },
+  fileBadge(r.lang, r.name),
+  el('span', { class: 'name' }, dirty ? el('span', { class: 'dirty-mark', text: '● ' }) : null, r.name),
+  openIco,
+  rowButton('more', t('docs.menu'), '⋯', (b) => docMenu(r, dirty, menuPos(b))),
+  rowButton('del', t('docs.remove'), '×', () => deleteFromWorkspace(r.id, r.name, dirty)));
+  item.addEventListener('click', async () => {
+    await showDoc(r.id);
+    if (window.innerWidth < 700) toggleSidebar(false);
+  });
+  item.addEventListener('contextmenu', (e) => { e.preventDefault(); docMenu(r, dirty, { x: e.clientX, y: e.clientY }); });
+  item.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData(DOC_DRAG, r.id);
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  return item;
+}
+
+function folderRow(f, depth, all) {
+  const count = all.filter((r) => inFolder(r.folder, f)).length;
+  const collapsed = collapsedFolders.has(f);
+  const row = el('div', { class: 'doc-item folder', style: `padding-left:${8 + depth * 14}px`, title: f, 'aria-expanded': String(!collapsed) },
+    el('span', { class: 'caret', text: collapsed ? '▸' : '▾' }),
+    el('span', { class: 'fold-ico' }, icon('M3 6h6l2 2h10v11H3z')),
+    el('span', { class: 'name', text: folderLeaf(f) }),
+    el('span', { class: 'count', text: String(count) }),
+    rowButton('more add', t('docs.newFileHere'), '+', () => newDocInFolder(f)),
+    rowButton('more', t('docs.menu'), '⋯', (b) => folderMenu(f, menuPos(b))));
+  row.addEventListener('click', () => {
+    if (collapsedFolders.has(f)) collapsedFolders.delete(f); else collapsedFolders.add(f);
+    refreshDocList();
+  });
+  row.addEventListener('contextmenu', (e) => { e.preventDefault(); folderMenu(f, { x: e.clientX, y: e.clientY }); });
+  row.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer.types.includes(DOC_DRAG)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    row.classList.add('drop');
+  });
+  row.addEventListener('dragleave', () => row.classList.remove('drop'));
+  row.addEventListener('drop', (e) => {
+    const id = e.dataTransfer.getData(DOC_DRAG);
+    if (!id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    row.classList.remove('drop');
+    collapsedFolders.delete(f);
+    setDocFolder(id, f, true);
+  });
+  return row;
+}
+
+// Soltar un documento en el espacio vacío de la lista lo saca de su carpeta.
+$('#docList').addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes(DOC_DRAG)) e.preventDefault(); });
+$('#docList').addEventListener('drop', (e) => {
+  const id = e.dataTransfer.getData(DOC_DRAG);
+  if (!id) return;
+  e.preventDefault();
+  setDocFolder(id, '', true);
+});
+
+function docMenu(r, dirty, pos) {
+  showMenu([
+    { label: t('docs.moveTo'), action: () => moveDocDialog(r) },
+    'sep',
+    { label: t('docs.remove'), action: () => deleteFromWorkspace(r.id, r.name, dirty) },
+  ], pos);
+}
+
+function folderMenu(f, pos) {
+  showMenu([
+    { label: t('docs.newFileHere'), action: () => newDocInFolder(f) },
+    { label: t('docs.newSubfolder'), action: () => newWsFolder(f) },
+    'sep',
+    { label: t('docs.saveFolder'), action: () => saveWsFolder(f) },
+    'sep',
+    { label: t('docs.renameFolder'), action: () => renameWsFolder(f) },
+    { label: t('docs.deleteFolder'), action: () => deleteWsFolder(f) },
+  ], pos);
+}
+
+async function setDocFolder(id, folder, announce = false) {
+  const live = docs.get(id);
+  let name;
+  if (live) {
+    if ((live.rec.folder || '') === folder) return;
+    live.rec.folder = folder;
+    name = live.rec.name;
+    await persist(live);
+  } else {
+    const rec = await db.getDoc(id);
+    if (!rec || (rec.folder || '') === folder) return;
+    rec.folder = folder;
+    name = rec.name;
+    await db.putDoc(rec);
+    refreshDocList();
+  }
+  bc.postMessage({ type: 'meta', docId: id, patch: { folder }, from: WID });
+  bc.postMessage({ type: 'docs-changed', from: WID });
+  if (announce) toast(t('docs.moved', { name, folder: folder || t('docs.root') }), { timeout: 2000 });
+}
+
+async function moveDocDialog(r) {
+  const folders = await getWsFolders();
+  if (!folders.length) { toast(t('docs.noFolders')); return; }
+  const items = [{ label: t('docs.root'), value: '', current: !r.folder }]
+    .concat(folders.map((f) => ({ label: f, value: f, current: r.folder === f })));
+  const v = await pickModal({ title: t('docs.moveTitle', { name: r.name }), items });
+  if (v == null) return;
+  if (v) collapsedFolders.delete(v);
+  await setDocFolder(r.id, v, true);
+}
+
+function cleanFolderName(name) {
+  if (name == null) return null;
+  const n = name.trim();
+  if (!n || /[\\/]/.test(n) || n === '.' || n === '..') { toast(t('docs.folderBadName')); return null; }
+  return n;
+}
+
+async function newWsFolder(parent = '') {
+  const name = cleanFolderName(await promptModal({
+    title: t('docs.newFolder'),
+    text: parent ? t('docs.insideFolder', { folder: parent }) : '',
+    placeholder: t('docs.folderName'),
+    okLabel: t('docs.create'),
+  }));
+  if (name == null) return;
+  const path = parent ? `${parent}/${name}` : name;
+  const folders = await getWsFolders();
+  if (folders.includes(path)) { toast(t('docs.folderExists')); return; }
+  if ($('#sidebar').hidden) toggleSidebar(true);
+  collapsedFolders.delete(parent);
+  await setWsFolders([...folders, path]);
+}
+
+async function renameWsFolder(f) {
+  const name = cleanFolderName(await promptModal({ title: t('docs.renameFolder'), value: folderLeaf(f), okLabel: t('docs.rename') }));
+  if (name == null || name === folderLeaf(f)) return;
+  const parent = parentOf(f);
+  const path = parent ? `${parent}/${name}` : name;
+  const folders = await getWsFolders();
+  if (folders.includes(path)) { toast(t('docs.folderExists')); return; }
+  const swap = (p) => (p === f ? path : p.startsWith(f + '/') ? path + p.slice(f.length) : p);
+  for (const r of await db.allDocs()) if (inFolder(r.folder, f)) await setDocFolder(r.id, swap(r.folder));
+  if (collapsedFolders.delete(f)) collapsedFolders.add(path);
+  await setWsFolders(folders.map(swap));
+}
+
+async function deleteWsFolder(f) {
+  const inside = (await db.allDocs()).filter((r) => inFolder(r.folder, f));
+  const parent = parentOf(f);
+  const choice = await confirmModal({
+    title: t('docs.deleteFolderTitle', { name: folderLeaf(f) }),
+    text: inside.length ? t('docs.deleteFolderText', { n: inside.length, parent: parent || t('docs.root') }) : t('docs.deleteFolderEmpty'),
+    buttons: [t('ui.cancel'), t('docs.deleteFolder')],
+  });
+  if (!choice) return;
+  for (const r of inside) await setDocFolder(r.id, parent);
+  await setWsFolders((await getWsFolders()).filter((p) => !(p === f || p.startsWith(f + '/'))));
+}
+
+async function newDocInFolder(f) {
+  const rec = await createDoc({ name: await nextUntitledName(), folder: f });
+  collapsedFolders.delete(f);
+  await openDocInPane(rec.id, focusedPane().id);
+  refreshDocList();
+}
+
+function uniqueFileName(used, dir, name) {
+  const set = used.get(dir) || new Set();
+  used.set(dir, set);
+  let out = name;
+  const dot = name.lastIndexOf('.');
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : '';
+  for (let i = 2; set.has(out.toLowerCase()); i++) out = `${stem} (${i})${ext}`;
+  set.add(out.toLowerCase());
+  return out;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = el('a', { href: url, download: filename });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+async function markEntrySaved(e, handle, name) {
+  if (e.live) {
+    if (handle) { e.live.rec.handle = handle; e.live.rec.name = name; }
+    await markSaved(e.live, e.text);
+    return;
+  }
+  const rec = await db.getDoc(e.r.id);
+  if (!rec) return;
+  rec.savedContent = e.text;
+  if (handle) { rec.handle = handle; rec.name = name; }
+  await db.putDoc(rec);
+  const patch = { savedContent: e.text, name: rec.name };
+  try {
+    bc.postMessage({ type: 'meta', docId: rec.id, patch: handle ? { ...patch, handle } : patch, from: WID });
+  } catch {
+    bc.postMessage({ type: 'meta', docId: rec.id, patch, from: WID });
+  }
+}
+
+// Guarda la carpeta completa: en Chrome y Edge de escritorio (y en la app de escritorio) se elige
+// dónde crearla en el disco; en los demás navegadores se descarga un .zip con la misma estructura.
+async function saveWsFolder(f) {
+  const items = (await db.allDocs()).filter((r) => inFolder(r.folder, f));
+  const subfolders = (await getWsFolders()).filter((p) => p.startsWith(f + '/')).map((p) => p.slice(f.length + 1));
+  if (!items.length && !subfolders.length) { toast(t('docs.folderEmpty')); return; }
+  const entries = items.map((r) => {
+    const live = docs.get(r.id);
+    const text = live ? getText(live) : r.content;
+    const eol = live ? live.rec.eol : r.eol;
+    return { r, live, text, out: eol === 'CRLF' ? text.replace(/\n/g, '\r\n') : text, rel: (r.folder || '').slice(f.length).replace(/^\//, '') };
+  });
+  const base = folderLeaf(f);
+  const used = new Map();
+
+  if (window.showDirectoryPicker) {
+    let target;
+    try {
+      target = await window.showDirectoryPicker({ mode: 'readwrite', id: 'multipad-save-folder' });
+    } catch (err) {
+      if (err.name !== 'AbortError') toast(err.message);
+      return;
+    }
+    try {
+      const root = await target.getDirectoryHandle(base, { create: true });
+      const dirs = new Map([['', root]]);
+      const dirFor = async (rel) => {
+        if (dirs.has(rel)) return dirs.get(rel);
+        const h = await (await dirFor(parentOf(rel))).getDirectoryHandle(folderLeaf(rel), { create: true });
+        dirs.set(rel, h);
+        return h;
+      };
+      for (const rel of subfolders) await dirFor(rel);
+      for (const e of entries) {
+        const name = uniqueFileName(used, e.rel, e.r.name);
+        const fh = await (await dirFor(e.rel)).getFileHandle(name, { create: true });
+        await writeToHandle(fh, e.out);
+        await markEntrySaved(e, fh, name);
+      }
+      toast(t('docs.folderSaved', { name: base, n: entries.length }));
+    } catch (err) {
+      toast(t('file.writeFail', { name: base, msg: err.message }));
+    }
+    refreshDocList();
+    return;
+  }
+
+  const files = subfolders.map((rel) => ({ path: `${base}/${rel}/`, dir: true }));
+  for (const e of entries) {
+    const name = uniqueFileName(used, e.rel, e.r.name);
+    files.push({ path: [base, e.rel, name].filter(Boolean).join('/'), text: e.out });
+  }
+  downloadBlob(makeZip(files), `${base}.zip`);
+  for (const e of entries) await markEntrySaved(e, null, e.r.name);
+  toast(t('docs.folderZip', { name: base, n: entries.length }));
+  refreshDocList();
+}
 
 async function deleteFromWorkspace(id, name, dirty) {
   const choice = await confirmModal({
@@ -1847,6 +2149,7 @@ function showAbout() {
 }
 
 const cmds = {
+  newWsFolder: () => newWsFolder(''),
   new: () => newDoc(),
   open: () => openFiles(),
   openFolder: () => openFolder(),
@@ -1954,6 +2257,7 @@ const MENUS = {
     { label: t('cmd.new'), kbd: 'Alt+N', action: cmds.new },
     { label: t('cmd.open'), kbd: 'Ctrl+O', action: cmds.open },
     { label: t('cmd.openFolder'), action: cmds.openFolder, disabled: !window.showDirectoryPicker },
+    { label: t('docs.newFolder'), action: cmds.newWsFolder },
     'sep',
     { label: t('cmd.save'), kbd: 'Ctrl+S', action: cmds.save, disabled: !activeDoc() },
     { label: t('cmd.saveAs'), kbd: 'Ctrl+Shift+S', action: cmds.saveAs, disabled: !activeDoc() },

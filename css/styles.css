@@ -248,11 +248,19 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .tree-item.dir, .tree-item.file { color: var(--text); }
 .tree-empty { padding: 6px 10px; color: var(--text-dim); font-size: 12px; }
 .doc-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
-.doc-item .open-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
-.doc-item .open-dot.off { background: transparent; }
-.doc-item .del { opacity: 0; border: 0; background: none; color: var(--text-dim); cursor: pointer; padding: 0 4px; }
-.doc-item:hover .del { opacity: 1; }
+.doc-item .open-ico { width: 14px; height: 14px; flex: none; color: var(--text-dim); display: inline-flex; }
+.doc-item .open-ico svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+.doc-item .del, .doc-item .more { opacity: 0; border: 0; background: none; color: var(--text-dim); cursor: pointer; padding: 0 4px; font-size: 14px; line-height: 1; }
+.doc-item:hover .del, .doc-item:hover .more, .doc-item:focus-within .del, .doc-item:focus-within .more { opacity: 1; }
 .doc-item .del:hover { color: var(--danger); }
+.doc-item .more:hover { color: var(--text); }
+@media (hover: none) { .doc-item .more { opacity: 1; } }
+.doc-item.folder { color: var(--text); font-weight: 600; }
+.doc-item.folder .caret { width: 10px; color: var(--text-dim); flex: none; text-align: center; font-size: 10px; }
+.doc-item.folder .fold-ico { width: 16px; height: 16px; flex: none; color: var(--dirty); display: inline-flex; }
+.doc-item.folder .fold-ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+.doc-item.folder .count { color: var(--text-dim); font-weight: 400; font-size: 11px; }
+.doc-item.drop { background: color-mix(in srgb, var(--accent) 18%, transparent); outline: 1px dashed var(--accent); }
 .doc-item .dirty-mark { color: var(--dirty); }
 
 /* Insignias de tipo de archivo */
