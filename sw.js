@@ -1,6 +1,6 @@
 // Service worker: guarda la app en caché para que abra sin conexión.
 // Cambia VERSION cada vez que publiques cambios; así cada dispositivo descarga la versión nueva.
-const VERSION = 'multipad-v1.3.3';
+const VERSION = 'multipad-v1.4.0';
 
 const ASSETS = [
   './',
@@ -11,6 +11,8 @@ const ASSETS = [
   './js/db.js',
   './js/langs.js',
   './js/i18n.js',
+  './js/i18n-pt.js',
+  './js/i18n-fr.js',
   './js/util.js',
   './js/runner.js',
   './js/lint.js',

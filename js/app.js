@@ -2,7 +2,7 @@
 import * as CM from '../vendor/codemirror.js';
 import { db } from './db.js';
 import { LANGS, langById, langExtension, detectLang } from './langs.js';
-import { t, getLang, setLang, applyI18n, detectBrowserLang } from './i18n.js';
+import { t, getLang, setLang, applyI18n, detectBrowserLang, UI_LANGS } from './i18n.js';
 import { $, el, icon, uid, debounce, toast, openModal, promptModal, confirmModal, pickModal, infoModal, makeZip } from './util.js';
 import { createRunner, runKind } from './runner.js';
 import { lintFor, LINTED } from './lint.js';
@@ -107,7 +107,8 @@ const comp = {
 };
 
 // Textos internos de CodeMirror (buscar, reemplazar, ir a línea).
-const cmPhrases = () => (getLang() === 'es' ? CM.EditorState.phrases.of({
+const CM_PHRASES = {
+  es: {
   'Find': 'Buscar', 'Replace': 'Reemplazar', 'next': 'siguiente', 'previous': 'anterior', 'all': 'todos',
   'match case': 'mayús/minús', 'by word': 'palabra completa', 'regexp': 'expresión regular', 'replace': 'reemplazar',
   'replace all': 'reemplazar todo', 'close': 'cerrar', 'Go to line': 'Ir a línea', 'go': 'ir',
@@ -115,7 +116,27 @@ const cmPhrases = () => (getLang() === 'es' ? CM.EditorState.phrases.of({
   'replaced $ matches': '$ reemplazos', 'Folded lines': 'Líneas plegadas', 'Unfolded lines': 'Líneas desplegadas',
   'Fold line': 'Plegar línea', 'Unfold line': 'Desplegar línea', 'folded code': 'código plegado', 'unfold': 'desplegar',
   'Diagnostics': 'Errores', 'No diagnostics': 'Sin errores', 'Go to next problem': 'Ir al siguiente error',
-}) : []);
+  },
+  pt: {
+  'Find': 'Localizar', 'Replace': 'Substituir', 'next': 'próximo', 'previous': 'anterior', 'all': 'todos',
+  'match case': 'maiúsc/minúsc', 'by word': 'palavra inteira', 'regexp': 'expressão regular', 'replace': 'substituir',
+  'replace all': 'substituir tudo', 'close': 'fechar', 'Go to line': 'Ir para a linha', 'go': 'ir',
+  'current match': 'ocorrência atual', 'on line': 'na linha', 'replaced match on line $': 'substituída na linha $',
+  'replaced $ matches': '$ substituições', 'Folded lines': 'Linhas recolhidas', 'Unfolded lines': 'Linhas expandidas',
+  'Fold line': 'Recolher linha', 'Unfold line': 'Expandir linha', 'folded code': 'código recolhido', 'unfold': 'expandir',
+  'Diagnostics': 'Erros', 'No diagnostics': 'Sem erros', 'Go to next problem': 'Ir para o próximo erro',
+  },
+  fr: {
+  'Find': 'Rechercher', 'Replace': 'Remplacer', 'next': 'suivant', 'previous': 'précédent', 'all': 'tous',
+  'match case': 'respecter la casse', 'by word': 'mot entier', 'regexp': 'expression régulière', 'replace': 'remplacer',
+  'replace all': 'tout remplacer', 'close': 'fermer', 'Go to line': 'Aller à la ligne', 'go': 'aller',
+  'current match': 'occurrence actuelle', 'on line': 'à la ligne', 'replaced match on line $': 'remplacée à la ligne $',
+  'replaced $ matches': '$ remplacements', 'Folded lines': 'Lignes repliées', 'Unfolded lines': 'Lignes dépliées',
+  'Fold line': 'Replier la ligne', 'Unfold line': 'Déplier la ligne', 'folded code': 'code replié', 'unfold': 'déplier',
+  'Diagnostics': 'Erreurs', 'No diagnostics': 'Aucune erreur', 'Go to next problem': 'Aller à l\'erreur suivante',
+  },
+};
+const cmPhrases = () => (CM_PHRASES[getLang()] ? CM.EditorState.phrases.of(CM_PHRASES[getLang()]) : []);
 const lintExt = (lang) => (settings.lint ? lintFor(lang) : []);
 
 const themeExt = () => (resolvedTheme() === 'dark' ? CM.oneDark : []);
@@ -2115,6 +2136,8 @@ function zoom(delta) {
   saveSettings();
 }
 
+const uiLangItems = () => UI_LANGS.map((l) => ({ label: l.name, checked: getLang() === l.id, action: () => setUiLang(l.id) }));
+
 function setUiLang(lang) {
   settings.uiLang = lang;
   saveSettings();
@@ -2223,7 +2246,10 @@ const cmds = {
   zoomIn: () => zoom(1),
   zoomOut: () => zoom(-1),
   zoomReset: () => zoom(0),
-  uiLang: () => setUiLang(getLang() === 'es' ? 'en' : 'es'),
+  uiLang: () => {
+    const r = $('#btnUiLang').getBoundingClientRect();
+    showMenu([{ title: t('cmd.uiLanguage') }, ...uiLangItems()], { x: r.left, y: r.bottom + 4 }, $('#btnUiLang'));
+  },
   run: () => runner.run(),
   stop: () => runner.stop(),
   runPanel: () => runner.toggle(),
@@ -2335,8 +2361,7 @@ const MENUS = {
     { label: t('cmd.zoomReset', { n: DEFAULTS.fontSize }), kbd: 'Ctrl+0', action: cmds.zoomReset },
     'sep',
     { title: t('cmd.uiLanguage') },
-    { label: 'Español', checked: getLang() === 'es', action: () => setUiLang('es') },
-    { label: 'English', checked: getLang() === 'en', action: () => setUiLang('en') },
+    ...uiLangItems(),
   ],
   // Igual que en Notepad++: la lista completa, con el lenguaje del documento activo marcado.
   language: () => {
@@ -2427,8 +2452,7 @@ $('#actSettings').addEventListener('click', () => {
     { label: t('cmd.themeDark'), checked: settings.theme === 'dark', action: () => cmds.theme('dark') },
     { label: t('cmd.themeLight'), checked: settings.theme === 'light', action: () => cmds.theme('light') },
     'sep',
-    { label: 'Español', checked: getLang() === 'es', action: () => setUiLang('es') },
-    { label: 'English', checked: getLang() === 'en', action: () => setUiLang('en') },
+    ...uiLangItems(),
     'sep',
     { label: t('cmd.zoomIn'), kbd: 'Ctrl+=', action: cmds.zoomIn },
     { label: t('cmd.zoomOut'), kbd: 'Ctrl+-', action: cmds.zoomOut },

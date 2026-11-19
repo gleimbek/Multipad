@@ -1,4 +1,7 @@
-// Textos de la interfaz en español e inglés.
+// Textos de la interfaz en español e inglés. Portugués y francés están en i18n-pt.js e i18n-fr.js.
+import PT from './i18n-pt.js';
+import FR from './i18n-fr.js';
+
 const DICT = {
   es: {
     'lint.syntax': 'Error de sintaxis', 'lint.unclosed': 'Falta cerrar algo: una llave }, un paréntesis ), un corchete ] o unas comillas.',
@@ -23,7 +26,7 @@ const DICT = {
     'top.sidebar': 'Panel lateral (Ctrl+B)', 'top.new': 'Nuevo (Alt+N)', 'top.open': 'Abrir (Ctrl+O)', 'top.save': 'Guardar (Ctrl+S)',
     'top.splitRight': 'Dividir a la derecha (Ctrl+\\)', 'top.splitDown': 'Dividir abajo', 'top.newWindow': 'Ventana nueva (Alt+Shift+N)',
     'top.otherScreen': 'Ventana en otra pantalla', 'top.run': 'Ejecutar', 'top.runTitle': 'Ejecutar o ver vista previa (F5)',
-    'top.uiLang': 'Idioma de la interfaz: cambiar a inglés', 'top.winLabel': 'Nombre de esta ventana (clic para renombrar)',
+    'top.uiLang': 'Idioma de la interfaz', 'top.winLabel': 'Nombre de esta ventana (clic para renombrar)',
 
     'act.files': 'Archivos', 'act.search': 'Buscar', 'act.run': 'Ejecutar', 'act.settings': 'Ajustes', 'set.title': 'Ajustes', 'side.folders': 'Carpetas', 'side.openFolder': 'Abrir carpeta', 'side.docs': 'Documentos del espacio',
     'folder.none': 'Ninguna carpeta abierta.', 'folder.needChrome': 'Abrir carpetas requiere Chrome o Edge de escritorio.',
@@ -192,7 +195,7 @@ Editor de código para computadora, tablet y celular.
 - En iPhone, iPad y Firefox, "Guardar" descarga el archivo o abre Compartir.
 - Todo lo que escribes queda guardado en este navegador. Lo encuentras en el panel lateral (Ctrl+B).
 
-El botón ES/EN de arriba cambia el idioma. Puedes cerrar este documento cuando quieras.
+El botón de idioma de arriba (ES, EN, PT, FR) cambia el idioma. Puedes cerrar este documento cuando quieras.
 `,
   },
 
@@ -219,7 +222,7 @@ El botón ES/EN de arriba cambia el idioma. Puedes cerrar este documento cuando 
     'top.sidebar': 'Sidebar (Ctrl+B)', 'top.new': 'New (Alt+N)', 'top.open': 'Open (Ctrl+O)', 'top.save': 'Save (Ctrl+S)',
     'top.splitRight': 'Split right (Ctrl+\\)', 'top.splitDown': 'Split down', 'top.newWindow': 'New window (Alt+Shift+N)',
     'top.otherScreen': 'Window on another screen', 'top.run': 'Run', 'top.runTitle': 'Run or preview (F5)',
-    'top.uiLang': 'Interface language: switch to Spanish', 'top.winLabel': 'Name of this window (click to rename)',
+    'top.uiLang': 'Interface language', 'top.winLabel': 'Name of this window (click to rename)',
 
     'act.files': 'Files', 'act.search': 'Search', 'act.run': 'Run', 'act.settings': 'Settings', 'set.title': 'Settings', 'side.folders': 'Folders', 'side.openFolder': 'Open folder', 'side.docs': 'Workspace documents',
     'folder.none': 'No folder open.', 'folder.needChrome': 'Opening folders requires desktop Chrome or Edge.',
@@ -388,15 +391,29 @@ Code editor for desktop, tablet and phone.
 - On iPhone, iPad and Firefox, "Save" downloads the file or opens Share.
 - Everything you type is kept in this browser. Find it in the sidebar (Ctrl+B).
 
-The ES/EN button at the top switches the language. Close this document whenever you like.
+The language button at the top (ES, EN, PT, FR) switches the language. Close this document whenever you like.
 `,
   },
 };
 
+DICT.pt = PT;
+DICT.fr = FR;
+
+export const UI_LANGS = [
+  { id: 'es', name: 'Español' },
+  { id: 'en', name: 'English' },
+  { id: 'pt', name: 'Português' },
+  { id: 'fr', name: 'Français' },
+];
+
 let current = 'es';
 
 export function detectBrowserLang() {
-  return (navigator.language || 'es').toLowerCase().startsWith('es') ? 'es' : 'en';
+  for (const l of navigator.languages || [navigator.language || 'es']) {
+    const code = String(l).slice(0, 2).toLowerCase();
+    if (DICT[code]) return code;
+  }
+  return 'en';
 }
 
 export function setLang(lang) {
@@ -406,7 +423,7 @@ export function setLang(lang) {
 export const getLang = () => current;
 
 export function t(key, vars) {
-  let s = DICT[current][key] ?? DICT.es[key] ?? key;
+  let s = DICT[current][key] ?? DICT.en[key] ?? DICT.es[key] ?? key;
   if (vars) s = s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] ?? m));
   return s;
 }
