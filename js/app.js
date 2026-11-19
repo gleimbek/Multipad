@@ -976,6 +976,28 @@ function handleDrop(e, paneId, index) {
 
 /* ------------------------------------------------------------------ archivos */
 
+// Selectores de archivos y carpetas del navegador. Solo puede haber uno abierto a la vez:
+// si ya hay uno (por ejemplo, quedó detrás de la ventana o se hizo doble clic), avisamos en vez de fallar.
+let pickerActive = false;
+async function filePicker(kind, opts) {
+  const busy = () => {
+    toast(t('file.pickerOpen'));
+    const e = new Error('picker busy');
+    e.name = 'AbortError';
+    return e;
+  };
+  if (pickerActive) throw busy();
+  pickerActive = true;
+  try {
+    return await window[kind](opts);
+  } catch (err) {
+    if (/already active/i.test(err?.message || '')) throw busy();
+    throw err;
+  } finally {
+    pickerActive = false;
+  }
+}
+
 async function verifyPermission(handle, write) {
   const opts = { mode: write ? 'readwrite' : 'read' };
   if (!handle.queryPermission) return true;
@@ -1039,7 +1061,7 @@ async function openHandle(handle, paneId, dir = null) {
 async function openFiles() {
   if (window.showOpenFilePicker) {
     try {
-      const handles = await window.showOpenFilePicker({ multiple: true });
+      const handles = await filePicker('showOpenFilePicker', { multiple: true });
       for (const h of handles) await openHandle(h);
     } catch (err) {
       if (err.name !== 'AbortError') toast(err.message);
@@ -1093,7 +1115,7 @@ async function saveDoc(d, { as = false } = {}) {
   }
   if (window.showSaveFilePicker) {
     try {
-      const handle = await window.showSaveFilePicker({ suggestedName: d.rec.name });
+      const handle = await filePicker('showSaveFilePicker', { suggestedName: d.rec.name });
       await writeToHandle(handle, out);
       const renamed = handle.name !== d.rec.name;
       d.rec.handle = handle;
@@ -1254,7 +1276,7 @@ async function openFolder() {
     return;
   }
   try {
-    await addFolder(await window.showDirectoryPicker({ mode: 'readwrite' }));
+    await addFolder(await filePicker('showDirectoryPicker', { mode: 'readwrite' }));
   } catch (err) {
     if (err.name !== 'AbortError') toast(err.message);
   }
@@ -1756,7 +1778,7 @@ async function saveWsFolder(f) {
   if (window.showDirectoryPicker) {
     let target;
     try {
-      target = await window.showDirectoryPicker({ mode: 'readwrite', id: 'multipad-save-folder' });
+      target = await filePicker('showDirectoryPicker', { mode: 'readwrite', id: 'multipad-save-folder' });
     } catch (err) {
       if (err.name !== 'AbortError') toast(err.message);
       return;
