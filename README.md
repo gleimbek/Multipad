@@ -197,8 +197,8 @@ Además de instalarse desde el navegador, Multipad se empaqueta como programa:
 GitHub Actions (`.github/workflows/instaladores.yml`) genera los cuatro archivos y los publica en un release cada vez que subes una etiqueta que empieza con `v`:
 
 ```bash
-git tag v1.3.0
-git push origin v1.3.0
+git tag v1.3.1
+git push origin v1.3.1
 ```
 
 Los archivos quedan con nombres fijos (`Multipad-Setup.exe`, `Multipad.dmg`, `Multipad.AppImage`, `Multipad.apk`), así que el enlace `https://github.com/gleimbek/Multipad/releases/latest/download/<archivo>` siempre apunta a la versión más reciente. Para que cualquiera pueda descargarlos, el repositorio tiene que ser público.
