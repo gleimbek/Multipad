@@ -127,6 +127,10 @@ const DICT = {
     'file.writeFail': 'No se pudo escribir {name}: {msg}. Prueba "Guardar como".', 'file.downloaded': 'Descargado: {name}',
     'file.saveAllPartial': 'Guardados {saved}. {pending} no tienen archivo en disco: usa "Guardar como" en cada uno.',
     'file.saveAllDone': 'Guardados {saved} archivo(s).',
+    'file.saveAllNothing': 'No hay cambios sin guardar.',
+    'file.saveAllMore': 'Guardados {saved}. Faltan {left}: el navegador pide un clic para cada archivo.',
+    'file.saveAllContinue': 'Seguir guardando',
+    'file.saveAllSkipped': 'Guardados {saved}. {skipped} quedaron sin guardar.',
 
     'err.localSave': 'No se pudo guardar en el almacenamiento local: {msg}', 'err.docGone': 'Ese documento ya no existe en el espacio de trabajo.',
     'err.maxPanes': 'Hasta 4 paneles por ventana. Para más, abre otra ventana.', 'err.start': 'Error al iniciar: {msg}',
@@ -308,6 +312,10 @@ El botón ES/EN de arriba cambia el idioma. Puedes cerrar este documento cuando 
     'file.writeFail': 'Could not write {name}: {msg}. Try "Save as".', 'file.downloaded': 'Downloaded: {name}',
     'file.saveAllPartial': 'Saved {saved}. {pending} have no file on disk: use "Save as" on each one.',
     'file.saveAllDone': 'Saved {saved} file(s).',
+    'file.saveAllNothing': 'No unsaved changes.',
+    'file.saveAllMore': 'Saved {saved}. {left} left: the browser needs a click for each file.',
+    'file.saveAllContinue': 'Keep saving',
+    'file.saveAllSkipped': 'Saved {saved}. {skipped} were not saved.',
 
     'err.localSave': 'Could not save to local storage: {msg}', 'err.docGone': 'That document no longer exists in the workspace.',
     'err.maxPanes': 'Up to 4 panes per window. For more, open another window.', 'err.start': 'Startup error: {msg}',

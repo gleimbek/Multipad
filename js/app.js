@@ -1127,15 +1127,62 @@ async function saveDoc(d, { as = false } = {}) {
   return true;
 }
 
-async function saveAll() {
-  let saved = 0;
-  let pending = 0;
-  for (const d of docs.values()) {
-    if (!d.dirty) continue;
-    if (d.rec.handle && await saveDoc(d)) saved++;
-    else pending++;
+// Guardar todo: cada archivo que el navegador tiene que autorizar (permiso de escritura o
+// "Guardar como") necesita un clic del usuario. Cuando ya no queda ese clic disponible,
+// paramos y ofrecemos un botón para seguir con los que faltan.
+const hasUserActivation = () => !navigator.userActivation || navigator.userActivation.isActive;
+let saveAllRunning = false;
+
+async function saveOneForAll(d) {
+  const handle = d.rec.handle;
+  if (handle) {
+    const opts = { mode: 'readwrite' };
+    let state = handle.queryPermission ? await handle.queryPermission(opts) : 'granted';
+    if (state !== 'granted') {
+      if (!hasUserActivation()) return 'needsClick';
+      state = await handle.requestPermission(opts);
+    }
+    if (state !== 'granted') return 'skipped';
+    try {
+      await writeToHandle(handle, outputText(d));
+      await markSaved(d, getText(d));
+      return 'saved';
+    } catch (err) {
+      toast(t('file.writeFail', { name: d.rec.name, msg: err.message }));
+      return 'skipped';
+    }
   }
-  toast(pending ? t('file.saveAllPartial', { saved, pending }) : t('file.saveAllDone', { saved }));
+  // Sin archivo en disco todavía: se pide dónde guardarlo (o se descarga si el navegador no permite elegir).
+  if ((window.showSaveFilePicker || isIOS) && !hasUserActivation()) return 'needsClick';
+  return (await saveDoc(d)) ? 'saved' : 'skipped';
+}
+
+async function saveAll() {
+  if (saveAllRunning) return;
+  saveAllRunning = true;
+  try {
+    const dirty = [...docs.values()].filter((d) => d.dirty);
+    if (!dirty.length) { toast(t('file.saveAllNothing'), { timeout: 2000 }); return; }
+    let saved = 0;
+    let skipped = 0;
+    let left = 0;
+    for (const d of dirty) {
+      if (left) { left++; continue; }
+      const res = await saveOneForAll(d);
+      if (res === 'saved') saved++;
+      else if (res === 'needsClick') left++;
+      else skipped++;
+    }
+    if (left) {
+      toast(t('file.saveAllMore', { saved, left }), { action: t('file.saveAllContinue'), onAction: () => saveAll() });
+    } else if (skipped) {
+      toast(t('file.saveAllSkipped', { saved, skipped }));
+    } else {
+      toast(t('file.saveAllDone', { saved }), { timeout: 2500 });
+    }
+  } finally {
+    saveAllRunning = false;
+  }
 }
 
 async function newDoc(paneId, lang) {
