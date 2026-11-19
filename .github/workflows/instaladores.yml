@@ -1,0 +1,91 @@
+# Genera los instaladores de Multipad y los publica en GitHub Releases.
+# Para publicar una versión: crea una etiqueta que empiece con "v" (por ejemplo v1.3.0) y súbela.
+#   git tag v1.3.0 && git push origin v1.3.0
+# En cada pull request también se generan, para comprobar que compilan.
+# También se puede correr a mano desde la pestaña Actions; en ese caso solo genera los archivos
+# (aparecen como "artifacts" de la ejecución) sin crear un release.
+name: Instaladores
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  escritorio:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            flag: --win
+            file: dist/Multipad-Setup.exe
+          - os: macos-latest
+            flag: --mac
+            file: dist/Multipad.dmg
+          - os: ubuntu-latest
+            flag: --linux
+            file: dist/Multipad.AppImage
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx electron-builder ${{ matrix.flag }} --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: instalador-${{ matrix.os }}
+          path: ${{ matrix.file }}
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: node tools/android-www.js
+      - run: npx cap add android
+      - name: Íconos de la app (desde assets/)
+        run: npx --yes @capacitor/assets generate --android --iconBackgroundColor '#0b1020' --splashBackgroundColor '#0b1020'
+      - run: npx cap sync android
+      - name: Compilar el .apk
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk Multipad.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: instalador-android
+          path: Multipad.apk
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [escritorio, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: archivos
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Multipad ${{ github.ref_name }}
+          files: archivos/*
+          generate_release_notes: true
