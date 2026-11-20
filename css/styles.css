@@ -880,3 +880,4 @@ table.res th, table.info-table th { background: var(--bg-3); font-weight: 600; }
 .aula-table td, .aula-table th { padding: 6px 7px; }
 .aula-table td:nth-child(2) { white-space: normal; min-width: 120px; }
 .aula-table .btn.sm { padding: 4px 9px; font-size: 12px; }
+.menu-btn[hidden] { display: none !important; }

@@ -79,7 +79,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openMenu
 const SETTINGS_KEY = 'multipad:settings';
 const DEFAULTS = {
   theme: 'auto', fontSize: 14, wrap: window.innerWidth < 700, tabSize: 4, whitespace: false, autocomplete: true, mobileKeys: 'auto',
-  lint: true, uiLang: detectBrowserLang(), judgeUrl: 'https://ce.judge0.com', judgeKey: '',
+  lint: true, uiLang: detectBrowserLang(), judgeUrl: 'https://ce.judge0.com', judgeKey: '', teacherTools: false,
 };
 const settings = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'));
 setLang(settings.uiLang);
@@ -179,6 +179,8 @@ function applySettings() {
   const showKeys = settings.mobileKeys === 'on' || (settings.mobileKeys === 'auto' && isTouch());
   $('#mobileKeys').hidden = !showKeys;
   $('#btnUiLang').textContent = getLang().toUpperCase();
+  // El menú Aula (crear ejercicios, revisar entregas) solo aparece si se activan las herramientas para docentes.
+  $('.menu-btn[data-menu="aula"]').hidden = !settings.teacherTools;
   if (langChanged && layout) { renderPanes(); renderWinLabel(); refreshDocList(); renderTree(); aula.aulaRefresh(); }
   if (lastAppliedTheme && lastAppliedTheme !== theme) runner?.rethemeIfNeeded();
   lastAppliedLang = settings.uiLang;
@@ -2242,6 +2244,11 @@ const cmds = {
   whitespace: () => { settings.whitespace = !settings.whitespace; saveSettings(); },
   autocomplete: () => { settings.autocomplete = !settings.autocomplete; saveSettings(); },
   lint: () => { settings.lint = !settings.lint; saveSettings(); },
+  teacherTools: () => {
+    settings.teacherTools = !settings.teacherTools;
+    saveSettings();
+    if (settings.teacherTools) toast(t('aula.teacherOn'));
+  },
   nextError: runCM(CM.nextDiagnostic),
   mobileKeys: () => {
     const showing = !$('#mobileKeys').hidden;
@@ -2438,7 +2445,7 @@ $('#btnMenu').addEventListener('click', () => {
   const btn = $('#btnMenu');
   if (openMenuBtn === btn) { closeMenu(); return; }
   const r = btn.getBoundingClientRect();
-  showMenu(MENU_ORDER.map((key) => ({
+  showMenu(MENU_ORDER.filter((key) => key !== 'aula' || settings.teacherTools).map((key) => ({
     label: t('menu.' + key) + '  ›',
     action: () => setTimeout(() => showMenu(MENUS[key](), { x: r.left, y: r.bottom + 2 }), 0),
   })), { x: r.left, y: r.bottom + 2 }, btn);
@@ -2468,6 +2475,8 @@ $('#actSettings').addEventListener('click', () => {
     { label: t('cmd.autocomplete'), checked: settings.autocomplete, action: cmds.autocomplete },
     { label: t('cmd.lint'), checked: settings.lint, action: cmds.lint },
     { label: t('cmd.tabSize'), action: cmds.tabSize },
+    'sep',
+    { label: t('cmd.teacherTools'), checked: settings.teacherTools, action: cmds.teacherTools },
     'sep',
     { label: t('cmd.server'), action: cmds.server },
   ], { x: r.right + 6, y: r.bottom - 360 });
@@ -2748,6 +2757,12 @@ async function start() {
 
   const v = activeView();
   if (v && !isTouch()) v.focus();
+  // Enlace "Para docentes" del sitio: activa las herramientas y muestra dónde están.
+  if (location.hash === '#docente') {
+    history.replaceState(null, '', location.pathname + location.search);
+    if (!settings.teacherTools) { settings.teacherTools = true; saveSettings(); }
+    toast(t('aula.teacherOn'), { timeout: 9000 });
+  }
   await aula.openPending();
 }
 

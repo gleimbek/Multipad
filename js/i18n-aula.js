@@ -1,5 +1,6 @@
 // Textos del modo aula en los cuatro idiomas de la interfaz.
 const es = {
+  'cmd.teacherTools': 'Mostrar herramientas para docentes', 'aula.teacherOn': 'Herramientas para docentes activadas: el menú Aula está arriba, junto a Ayuda.',
   'menu.aula': 'Aula',
   'aula.menu.teacher': 'Docente', 'aula.menu.student': 'Alumno',
   'aula.menu.create': 'Crear ejercicio…', 'aula.menu.mine': 'Mis ejercicios…', 'aula.menu.review': 'Revisar entregas…', 'aula.menu.open': 'Abrir ejercicio desde archivo…',
@@ -64,6 +65,7 @@ const es = {
 };
 
 const en = {
+  'cmd.teacherTools': 'Show teacher tools', 'aula.teacherOn': 'Teacher tools are on: the Classroom menu is at the top, next to Help.',
   'menu.aula': 'Classroom',
   'aula.menu.teacher': 'Teacher', 'aula.menu.student': 'Student',
   'aula.menu.create': 'Create exercise…', 'aula.menu.mine': 'My exercises…', 'aula.menu.review': 'Review submissions…', 'aula.menu.open': 'Open exercise from file…',
@@ -128,6 +130,7 @@ const en = {
 };
 
 const pt = {
+  'cmd.teacherTools': 'Mostrar ferramentas para professores', 'aula.teacherOn': 'Ferramentas para professores ativadas: o menu Sala de aula fica no alto, ao lado de Ajuda.',
   'menu.aula': 'Sala de aula',
   'aula.menu.teacher': 'Professor', 'aula.menu.student': 'Aluno',
   'aula.menu.create': 'Criar exercício…', 'aula.menu.mine': 'Meus exercícios…', 'aula.menu.review': 'Revisar entregas…', 'aula.menu.open': 'Abrir exercício de um arquivo…',
@@ -192,6 +195,7 @@ const pt = {
 };
 
 const fr = {
+  'cmd.teacherTools': 'Afficher les outils enseignant', 'aula.teacherOn': 'Outils enseignant activés : le menu Classe est en haut, à côté d\'Aide.',
   'menu.aula': 'Classe',
   'aula.menu.teacher': 'Enseignant', 'aula.menu.student': 'Élève',
   'aula.menu.create': 'Créer un exercice…', 'aula.menu.mine': 'Mes exercices…', 'aula.menu.review': 'Corriger les rendus…', 'aula.menu.open': 'Ouvrir un exercice depuis un fichier…',
