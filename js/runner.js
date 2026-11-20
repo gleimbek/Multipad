@@ -400,7 +400,10 @@ export function createRunner(api) {
 <table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table></body></html>`), doc.name);
       return;
     }
+    // Si hay archivos con el mismo nombre en varias carpetas, gana el de la carpeta del HTML.
+    const hostFolder = all.find((x) => x.id === host.id)?.folder || '';
     const byName = new Map(all.map((x) => [x.name.toLowerCase(), x]));
+    for (const x of all) if ((x.folder || '') === hostFolder) byName.set(x.name.toLowerCase(), x);
     const missing = [];
     const missingImages = new Set();
     const scripts = [];
@@ -763,5 +766,15 @@ img{max-width:94%;max-height:84vh;box-shadow:0 4px 18px rgba(0,0,0,.18)}p{margin
     if (current?.kind === 'markdown' && lastRender) autoRerun();
   }
 
-  return { run, stop, toggle, open, close, popout, onDocChanged, onAssetsChanged, showImage, layout: layoutPanel, rethemeIfNeeded, isOpen: () => !!state().open };
+  // Página completa (HTML con su CSS, JS e imágenes) armada solo con estos archivos. La usa el modo aula.
+  async function buildPage(host, files) {
+    const byName = new Map(files.map((x) => [x.name.toLowerCase(), x]));
+    const missing = [];
+    const missingImages = new Set();
+    let html = await inlineAssets(host.text, byName, missing, host.id, []);
+    html = await inlineImages(html, host.id, missingImages);
+    return { html: injectHook(html), missing: [...missing, ...missingImages] };
+  }
+
+  return { run, stop, toggle, buildPage, open, close, popout, onDocChanged, onAssetsChanged, showImage, layout: layoutPanel, rethemeIfNeeded, isOpen: () => !!state().open };
 }

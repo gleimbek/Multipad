@@ -47,6 +47,7 @@
         <button class="menu-btn" data-menu="language" data-i18n="menu.language"></button>
         <button class="menu-btn" data-menu="run" data-i18n="menu.run"></button>
         <button class="menu-btn" data-menu="window" data-i18n="menu.window"></button>
+        <button class="menu-btn" data-menu="aula" data-i18n="menu.aula"></button>
         <button class="menu-btn" data-menu="help" data-i18n="menu.help"></button>
       </nav>
       <div id="quick">
@@ -86,7 +87,33 @@
       </div>
     </header>
 
+    <div id="aulaBar" hidden>
+      <svg class="aula-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 9l10-5 10 5-10 5z M6 11v5c3 2.5 9 2.5 12 0v-5 M22 9v6" /></svg>
+      <span id="aulaTitle"></span>
+      <span id="aulaExamBadge" class="aula-badge" data-i18n="aula.examShort" hidden></span>
+      <span id="aulaScore" class="aula-badge score" hidden></span>
+      <span id="aulaSubmitted" class="aula-sub" hidden></span>
+      <span class="grow"></span>
+      <button id="aulaStudent" class="aula-chip" data-i18n-title="aula.changeName"></button>
+      <span id="aulaTime" class="aula-time"></span>
+      <button id="aulaBtnInstr" class="btn sm" data-i18n="aula.instructions"></button>
+      <button id="aulaBtnCheck" class="btn sm" data-i18n="aula.check"></button>
+      <button id="aulaBtnSubmit" class="btn sm primary" data-i18n="aula.submit"></button>
+      <button id="aulaMore" class="icon-btn" data-i18n-title="docs.menu" data-i18n-aria-label="docs.menu">
+        <svg viewBox="0 0 24 24"><path d="M12 5.5v.01 M12 12v.01 M12 18.5v.01" /></svg>
+      </button>
+    </div>
+
     <div id="main">
+      <aside id="aulaDrawer" hidden>
+        <div class="aula-drawer-head">
+          <span id="aulaDrawerTitle"></span>
+          <button id="aulaDrawerClose" class="icon-btn" data-i18n-title="ui.close" data-i18n-aria-label="ui.close">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12 M18 6L6 18" /></svg>
+          </button>
+        </div>
+        <div id="aulaDrawerBody"></div>
+      </aside>
       <nav id="activitybar">
         <button class="act-btn" id="actFiles" data-i18n-title="top.sidebar">
           <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>

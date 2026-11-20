@@ -5,6 +5,7 @@ import { LANGS, langById, langExtension, detectLang } from './langs.js';
 import { t, getLang, setLang, applyI18n, detectBrowserLang, UI_LANGS } from './i18n.js';
 import { $, el, icon, uid, debounce, toast, openModal, promptModal, confirmModal, pickModal, infoModal, makeZip } from './util.js';
 import { createRunner, runKind } from './runner.js';
+import * as aula from './aula.js';
 import { lintFor, LINTED } from './lint.js';
 
 const TAB_MIME = 'application/x-multipad-tab';
@@ -78,7 +79,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openMenu
 const SETTINGS_KEY = 'multipad:settings';
 const DEFAULTS = {
   theme: 'auto', fontSize: 14, wrap: window.innerWidth < 700, tabSize: 4, whitespace: false, autocomplete: true, mobileKeys: 'auto',
-  lint: true, uiLang: detectBrowserLang(), judgeUrl: 'https://ce.judge0.com', judgeKey: '',
+  lint: true, uiLang: detectBrowserLang(), judgeUrl: 'https://ce.judge0.com', judgeKey: '', teacherTools: false,
 };
 const settings = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'));
 setLang(settings.uiLang);
@@ -178,7 +179,9 @@ function applySettings() {
   const showKeys = settings.mobileKeys === 'on' || (settings.mobileKeys === 'auto' && isTouch());
   $('#mobileKeys').hidden = !showKeys;
   $('#btnUiLang').textContent = getLang().toUpperCase();
-  if (langChanged && layout) { renderPanes(); renderWinLabel(); refreshDocList(); renderTree(); }
+  // El menú Aula (crear ejercicios, revisar entregas) solo aparece si se activan las herramientas para docentes.
+  $('.menu-btn[data-menu="aula"]').hidden = !settings.teacherTools;
+  if (langChanged && layout) { renderPanes(); renderWinLabel(); refreshDocList(); renderTree(); aula.aulaRefresh(); }
   if (lastAppliedTheme && lastAppliedTheme !== theme) runner?.rethemeIfNeeded();
   lastAppliedLang = settings.uiLang;
   lastAppliedTheme = theme;
@@ -393,7 +396,7 @@ async function allDocTexts() {
   const all = await db.allDocs();
   return all.map((r) => {
     const live = docs.get(r.id);
-    return { id: r.id, name: live?.rec.name || r.name, lang: live?.rec.lang || r.lang, text: live ? getText(live) : r.content };
+    return { id: r.id, name: live?.rec.name || r.name, lang: live?.rec.lang || r.lang, folder: r.folder || '', text: live ? getText(live) : r.content };
   });
 }
 
@@ -488,7 +491,11 @@ function createView(d, paneId) {
         comp.phrases.of(cmPhrases()),
         CM.EditorView.contentAttributes.of({ autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' }),
         CM.EditorView.updateListener.of((u) => onViewUpdate(u, d)),
-        CM.EditorView.domEventHandlers({ focus: (_e, v) => { setFocus(paneOfView.get(v)); } }),
+        CM.EditorView.domEventHandlers({
+          focus: (_e, v) => { setFocus(paneOfView.get(v)); },
+          paste: (e) => aula.onPaste(e, d.rec.id),
+          drop: (e) => aula.onDrop(e, d.rec.id),
+        }),
       ],
     }),
   });
@@ -1038,6 +1045,7 @@ async function findDocByHandle(handle) {
 }
 
 async function openFileObject(file, handle, paneId, dir = null) {
+  if (/\.mpaula$/i.test(file.name)) { await aula.openExerciseFile(file); return; }
   if (isImageFile(file)) {
     // Las imágenes no se abren como texto: se guardan en el espacio de trabajo y se ven en la vista previa.
     const asset = dir ? { name: file.name, blob: file, size: file.size } : await addImage(file);
@@ -1531,7 +1539,7 @@ async function setWsFolders(list) {
 
 const refreshDocList = debounce(async () => {
   if ($('#sidebar').hidden) return;
-  const all = (await db.allDocs()).sort((a, b) => a.name.localeCompare(b.name));
+  const all = (await db.allDocs()).filter((r) => !aula.hiddenInList(r)).sort((a, b) => a.name.localeCompare(b.name));
   const folders = await getWsFolders();
   for (const r of all) {
     let p = r.folder || '';
@@ -2236,6 +2244,11 @@ const cmds = {
   whitespace: () => { settings.whitespace = !settings.whitespace; saveSettings(); },
   autocomplete: () => { settings.autocomplete = !settings.autocomplete; saveSettings(); },
   lint: () => { settings.lint = !settings.lint; saveSettings(); },
+  teacherTools: () => {
+    settings.teacherTools = !settings.teacherTools;
+    saveSettings();
+    if (settings.teacherTools) toast(t('aula.teacherOn'));
+  },
   nextError: runCM(CM.nextDiagnostic),
   mobileKeys: () => {
     const showing = !$('#mobileKeys').hidden;
@@ -2407,6 +2420,7 @@ const MENUS = {
       ...others.map((p) => ({ label: p.name, disabled: true })),
     ];
   },
+  aula: () => aula.menuItems(),
   help: () => [
     { label: t('lang.whatRuns'), action: cmds.languagesTable },
     { label: t('sc.title'), action: cmds.shortcuts },
@@ -2414,7 +2428,7 @@ const MENUS = {
   ],
 };
 
-const MENU_ORDER = ['file', 'edit', 'view', 'language', 'run', 'window', 'help'];
+const MENU_ORDER = ['file', 'edit', 'view', 'language', 'run', 'window', 'aula', 'help'];
 
 function openTopMenu(btn) {
   const r = btn.getBoundingClientRect();
@@ -2431,7 +2445,7 @@ $('#btnMenu').addEventListener('click', () => {
   const btn = $('#btnMenu');
   if (openMenuBtn === btn) { closeMenu(); return; }
   const r = btn.getBoundingClientRect();
-  showMenu(MENU_ORDER.map((key) => ({
+  showMenu(MENU_ORDER.filter((key) => key !== 'aula' || settings.teacherTools).map((key) => ({
     label: t('menu.' + key) + '  ›',
     action: () => setTimeout(() => showMenu(MENUS[key](), { x: r.left, y: r.bottom + 2 }), 0),
   })), { x: r.left, y: r.bottom + 2 }, btn);
@@ -2461,6 +2475,8 @@ $('#actSettings').addEventListener('click', () => {
     { label: t('cmd.autocomplete'), checked: settings.autocomplete, action: cmds.autocomplete },
     { label: t('cmd.lint'), checked: settings.lint, action: cmds.lint },
     { label: t('cmd.tabSize'), action: cmds.tabSize },
+    'sep',
+    { label: t('cmd.teacherTools'), checked: settings.teacherTools, action: cmds.teacherTools },
     'sep',
     { label: t('cmd.server'), action: cmds.server },
   ], { x: r.right + 6, y: r.bottom - 360 });
@@ -2685,6 +2701,21 @@ async function start() {
     assetDataUrl: (a) => blobToDataUrl(a.blob, a.id ? a.id + ':' + a.updated : null),
   });
 
+  await aula.initAula({
+    allDocs: () => allDocTexts(),
+    docText: (id) => (id ? docTextById(id) : null),
+    createDoc: (o) => createDoc(o),
+    showDoc: (id) => showDoc(id),
+    closeTabsExcept: (keep) => {
+      for (const pane of [...layout.panes]) for (const id of [...pane.tabs]) if (!keep.includes(id)) closeTab(pane.id, id, { keepPane: true });
+    },
+    buildPage: (host, files) => runner.buildPage(host, files),
+    refreshDocList: () => refreshDocList(),
+    downloadBlob: (blob, name) => downloadBlob(blob, name),
+    showMenu: (items, pos, btn) => showMenu(items, pos, btn),
+    onLayout: () => { for (const v of allViews()) v.requestMeasure(); },
+  });
+
   syncViewport();
   applySettings();
   renderWinLabel();
@@ -2702,6 +2733,8 @@ async function start() {
     history.replaceState(null, '', url);
   }
 
+  // Quien llega por el enlace de un ejercicio no necesita el documento de bienvenida.
+  if (WID === 'main' && !(await db.get('initialized')) && location.hash.includes('aula=')) await db.set('initialized', true);
   if (WID === 'main' && !(await db.get('initialized'))) {
     await db.set('initialized', true);
     const welcome = t('welcome.doc');
@@ -2724,6 +2757,13 @@ async function start() {
 
   const v = activeView();
   if (v && !isTouch()) v.focus();
+  // Enlace "Para docentes" del sitio: activa las herramientas y muestra dónde están.
+  if (location.hash === '#docente') {
+    history.replaceState(null, '', location.pathname + location.search);
+    if (!settings.teacherTools) { settings.teacherTools = true; saveSettings(); }
+    toast(t('aula.teacherOn'), { timeout: 9000 });
+  }
+  await aula.openPending();
 }
 
 window.addEventListener('pagehide', () => {
