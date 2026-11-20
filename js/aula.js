@@ -253,9 +253,13 @@ async function startExercise(ex) {
   };
   active.ex = ex;
   // Crea los archivos iniciales que falten (si ya los tenía, se conserva su trabajo).
+  // Si ya hay archivos de este ejercicio en su carpeta (por ejemplo, salió y volvió a entrar), se reutilizan.
+  const inFolder = (await api.allDocs()).filter((d) => (d.folder || '') === active.folder);
   for (const f of ex.files) {
     const id = active.docIds[f.name];
     if (id && await api.docText(id)) continue;
+    const prevDoc = inFolder.find((d) => d.name === f.name);
+    if (prevDoc) { active.docIds[f.name] = prevDoc.id; continue; }
     const rec = await api.createDoc({ name: f.name, content: f.content, savedContent: '', folder: active.folder });
     active.docIds[f.name] = rec.id;
   }
