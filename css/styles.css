@@ -757,3 +757,126 @@ table.res th, table.info-table th { background: var(--bg-3); font-weight: 600; }
 .img-item .del { opacity: 0; border: 0; background: none; color: var(--text-dim); cursor: pointer; padding: 0 4px; }
 .img-item:hover .del { opacity: 1; }
 .img-item .del:hover { color: var(--danger); }
+
+/* ---------------- modo aula ---------------- */
+.btn.sm { padding: 5px 11px; font-size: 13px; }
+.btn.sm.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.btn:disabled { opacity: .5; cursor: default; }
+#aulaBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: linear-gradient(90deg, var(--accent-soft), transparent 70%), var(--bg-2);
+  border-bottom: 1px solid var(--line);
+  min-height: 42px;
+  font-size: 13px;
+}
+#aulaBar[hidden] { display: none; }
+#aulaBar .grow { flex: 1; }
+.aula-ico { width: 20px; height: 20px; fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; flex: none; }
+#aulaTitle { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32vw; }
+.aula-badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--danger); color: #fff; white-space: nowrap; }
+.aula-badge.score { background: var(--bg-3); color: var(--text); }
+.aula-badge.score.all { background: var(--ok); color: #04150d; }
+.aula-sub { color: var(--text-dim); font-size: 12px; white-space: nowrap; }
+.aula-chip { border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 3px 10px; cursor: pointer; color: var(--text); font-size: 12px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aula-chip:hover { border-color: var(--accent); }
+.aula-time { color: var(--text-dim); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#aulaDrawer {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: min(420px, 92vw);
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-2);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+#aulaDrawer[hidden] { display: none; }
+.aula-drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 4px 16px; border-bottom: 1px solid var(--line); font-weight: 700; min-height: 40px; }
+#aulaDrawerBody { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
+.aula-instr { flex: 1; min-height: 240px; border: 0; width: 100%; background: transparent; }
+.aula-hint { margin: 10px 16px; color: var(--text-dim); font-size: 12.5px; }
+.aula-summary { margin: 14px 16px 6px; font-weight: 700; font-size: 15px; }
+.aula-summary.all { color: var(--ok); }
+.aula-results { margin: 4px 0 16px; padding: 0 16px; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.aula-results li { display: grid; grid-template-columns: 22px 1fr; gap: 2px 6px; padding: 8px 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); }
+.aula-results .mark { font-weight: 800; }
+.aula-results li.ok .mark { color: var(--ok); }
+.aula-results li.fail .mark { color: var(--danger); }
+.aula-results .got { grid-column: 2; color: var(--text-dim); font-size: 12px; font-family: var(--mono); word-break: break-word; }
+.aula-test-frame { position: fixed; left: -10000px; top: 0; width: 1024px; height: 768px; border: 0; visibility: hidden; }
+
+.modal.aula-editor, .modal.aula-review { width: min(860px, calc(100vw - 24px)); display: flex; flex-direction: column; max-height: calc(var(--vvh) - 60px); }
+#modalLayer:has(.aula-editor), #modalLayer:has(.aula-review) { padding-top: 24px; }
+.aula-scroll { overflow-y: auto; padding: 0 16px 8px; }
+.aula-scroll section { padding: 10px 0 14px; border-bottom: 1px solid var(--line); }
+.aula-scroll section:last-child { border-bottom: 0; }
+.aula-scroll h3 { margin: 4px 0 8px; font-size: 14px; }
+.aula-scroll .hint, .aula-field .hint { display: block; color: var(--text-dim); font-size: 12px; margin: 2px 0 8px; }
+.aula-scroll .hint.warn { color: var(--dirty); }
+.aula-scroll .row, .aula-mine .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.aula-field { display: block; margin: 0 0 8px; }
+.aula-field .lbl { display: block; font-size: 12px; font-weight: 600; color: var(--text-dim); margin-bottom: 3px; }
+.aula-scroll input[type="text"], .aula-scroll input[type="number"], .aula-scroll textarea, .aula-scroll select, .aula-link input {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg-editor);
+  color: var(--text);
+  font: 13px var(--ui);
+}
+.aula-scroll textarea { font-family: var(--mono); font-size: 12.5px; resize: vertical; }
+.aula-scroll input:focus, .aula-scroll textarea:focus, .aula-scroll select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.aula-files { display: flex; flex-direction: column; gap: 2px; max-height: 210px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 4px; background: var(--bg); }
+.aula-file { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.aula-file:hover { background: var(--bg-3); }
+.aula-file.on { background: var(--accent-soft); }
+.aula-file .nm { flex: 1; font-family: var(--mono); font-size: 12.5px; }
+.aula-file .st { font-size: 11.5px; color: var(--text-dim); }
+.link-btn { border: 0; background: none; color: var(--accent); cursor: pointer; font-size: 12px; padding: 0 2px; text-decoration: underline; }
+.aula-tests { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.aula-test { border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; background: var(--bg); }
+.aula-test-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.aula-test-head .num { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-3); font-size: 12px; font-weight: 700; flex: none; }
+.aula-test-head select { width: auto; flex: 0 1 300px; }
+.aula-test-head .res { font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aula-test-head .res.ok { color: var(--ok); }
+.aula-test-head .res.fail { color: var(--danger); }
+.aula-test-head .icon-x { margin-left: auto; border: 0; background: none; color: var(--text-dim); font-size: 20px; cursor: pointer; line-height: 1; padding: 0 4px; }
+.aula-test-head .icon-x:hover { color: var(--danger); }
+.aula-test-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0 10px; }
+.aula-try { font-size: 13px; font-weight: 600; }
+.aula-check { display: flex; gap: 10px; align-items: flex-start; margin: 6px 0; cursor: pointer; }
+.aula-check input { margin-top: 3px; accent-color: var(--accent); }
+.aula-check b { display: block; font-size: 13px; }
+.aula-link { margin-top: 10px; }
+.aula-mine { padding: 0 16px 10px; max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.aula-mine-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.aula-mine-row .hint { display: block; color: var(--text-dim); font-size: 12px; }
+.aula-drop { border: 2px dashed var(--line); border-radius: 10px; padding: 12px 14px; margin: 6px 0 12px; }
+.aula-drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.aula-drop .hint { margin-top: 0; }
+.aula-table-wrap { overflow-x: auto; }
+.aula-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.aula-table th { text-align: left; font-size: 11.5px; color: var(--text-dim); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.aula-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.aula-table td.ok { color: var(--ok); font-weight: 600; }
+.aula-table td.warn { color: var(--dirty); font-weight: 600; }
+.aula-table td.acts { display: flex; gap: 6px; }
+@media (max-width: 760px) {
+  #aulaBar { flex-wrap: wrap; row-gap: 4px; }
+  #aulaTitle { max-width: 60vw; }
+  .aula-time, .aula-sub { display: none; }
+  #aulaBar .grow { flex-basis: 100%; height: 0; }
+}
+.modal .aula-scroll input[type="text"], .modal .aula-link input[type="text"] { margin: 0; width: 100%; display: block; }
+.aula-test-grid { align-items: end; }
+.aula-field .lbl { min-height: 1.3em; }
+.modal.aula-review { width: min(1120px, calc(100vw - 24px)); }
+.aula-table td, .aula-table th { padding: 6px 7px; }
+.aula-table td:nth-child(2) { white-space: normal; min-width: 120px; }
+.aula-table .btn.sm { padding: 4px 9px; font-size: 12px; }

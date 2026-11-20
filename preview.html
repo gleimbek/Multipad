@@ -19,11 +19,15 @@
     // por BroadcastChannel; se puede mover a otra pantalla.
     const params = new URLSearchParams(location.search);
     const wid = params.get('wid');
-    const en = params.get('lang') === 'en';
-    document.documentElement.lang = en ? 'en' : 'es';
-    document.getElementById('wait').textContent = en
-      ? 'Waiting for content… Press Run (F5) in the editor.'
-      : 'Esperando contenido… Pulsa Ejecutar (F5) en el editor.';
+    const TEXTS = {
+      es: ['Esperando contenido… Pulsa Ejecutar (F5) en el editor.', 'Vista previa'],
+      en: ['Waiting for content… Press Run (F5) in the editor.', 'Preview'],
+      pt: ['Aguardando conteúdo… Aperte Executar (F5) no editor.', 'Pré-visualização'],
+      fr: ['En attente du contenu… Appuyez sur Exécuter (F5) dans l\'éditeur.', 'Aperçu'],
+    };
+    const lang = TEXTS[params.get('lang')] ? params.get('lang') : 'es';
+    document.documentElement.lang = lang;
+    document.getElementById('wait').textContent = TEXTS[lang][0];
     const frame = document.getElementById('frame');
     const bc = new BroadcastChannel('multipad-preview');
     bc.onmessage = (e) => {
@@ -32,7 +36,7 @@
       document.getElementById('wait').hidden = true;
       frame.hidden = false;
       frame.srcdoc = m.html;
-      document.title = (m.title || '') + (en ? ' · Preview' : ' · Vista previa');
+      document.title = (m.title || '') + ' · ' + TEXTS[lang][1];
     };
     window.addEventListener('message', (e) => {
       if (e.source !== frame.contentWindow || !e.data || !e.data.__multipad) return;

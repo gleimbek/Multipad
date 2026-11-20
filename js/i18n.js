@@ -1,6 +1,7 @@
 // Textos de la interfaz en español e inglés. Portugués y francés están en i18n-pt.js e i18n-fr.js.
 import PT from './i18n-pt.js';
 import FR from './i18n-fr.js';
+import AULA from './i18n-aula.js';
 
 const DICT = {
   es: {
@@ -398,6 +399,7 @@ The language button at the top (ES, EN, PT, FR) switches the language. Close thi
 
 DICT.pt = PT;
 DICT.fr = FR;
+for (const l of Object.keys(AULA)) Object.assign(DICT[l], AULA[l]);
 
 export const UI_LANGS = [
   { id: 'es', name: 'Español' },

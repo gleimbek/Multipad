@@ -210,3 +210,45 @@ export function makeZip(files) {
   end.setUint32(16, offset, true);
   return new Blob([...parts, ...central, end], { type: 'application/zip' });
 }
+
+// Lee un .zip (sin cifrar) y devuelve [{ path, bytes }]. Soporta "store" y "deflate",
+// que es lo que usan Multipad, Windows, macOS y la descarga de entregas de Canvas.
+export async function readZip(blob, { maxBytes = 50 * 1024 * 1024 } = {}) {
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  let end = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { end = i; break; }
+  }
+  if (end < 0) throw new Error('zip');
+  const count = view.getUint16(end + 10, true);
+  let p = view.getUint32(end + 16, true);
+  const dec = new TextDecoder();
+  const out = [];
+  let total = 0;
+  for (let n = 0; n < count && p + 46 <= buf.length; n++) {
+    if (view.getUint32(p, true) !== 0x02014b50) break;
+    const method = view.getUint16(p + 10, true);
+    const csize = view.getUint32(p + 20, true);
+    const usize = view.getUint32(p + 24, true);
+    const nlen = view.getUint16(p + 28, true);
+    const xlen = view.getUint16(p + 30, true);
+    const clen = view.getUint16(p + 32, true);
+    const local = view.getUint32(p + 42, true);
+    const path = dec.decode(buf.subarray(p + 46, p + 46 + nlen));
+    p += 46 + nlen + xlen + clen;
+    if (path.endsWith('/')) continue;
+    total += usize;
+    if (total > maxBytes) throw new Error('zip-size');
+    const start = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true);
+    const data = buf.subarray(start, start + csize);
+    let bytes;
+    if (method === 0) bytes = data;
+    else if (method === 8) {
+      const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+    } else continue;
+    out.push({ path, bytes });
+  }
+  return out;
+}

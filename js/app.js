@@ -5,6 +5,7 @@ import { LANGS, langById, langExtension, detectLang } from './langs.js';
 import { t, getLang, setLang, applyI18n, detectBrowserLang, UI_LANGS } from './i18n.js';
 import { $, el, icon, uid, debounce, toast, openModal, promptModal, confirmModal, pickModal, infoModal, makeZip } from './util.js';
 import { createRunner, runKind } from './runner.js';
+import * as aula from './aula.js';
 import { lintFor, LINTED } from './lint.js';
 
 const TAB_MIME = 'application/x-multipad-tab';
@@ -178,7 +179,7 @@ function applySettings() {
   const showKeys = settings.mobileKeys === 'on' || (settings.mobileKeys === 'auto' && isTouch());
   $('#mobileKeys').hidden = !showKeys;
   $('#btnUiLang').textContent = getLang().toUpperCase();
-  if (langChanged && layout) { renderPanes(); renderWinLabel(); refreshDocList(); renderTree(); }
+  if (langChanged && layout) { renderPanes(); renderWinLabel(); refreshDocList(); renderTree(); aula.aulaRefresh(); }
   if (lastAppliedTheme && lastAppliedTheme !== theme) runner?.rethemeIfNeeded();
   lastAppliedLang = settings.uiLang;
   lastAppliedTheme = theme;
@@ -393,7 +394,7 @@ async function allDocTexts() {
   const all = await db.allDocs();
   return all.map((r) => {
     const live = docs.get(r.id);
-    return { id: r.id, name: live?.rec.name || r.name, lang: live?.rec.lang || r.lang, text: live ? getText(live) : r.content };
+    return { id: r.id, name: live?.rec.name || r.name, lang: live?.rec.lang || r.lang, folder: r.folder || '', text: live ? getText(live) : r.content };
   });
 }
 
@@ -488,7 +489,11 @@ function createView(d, paneId) {
         comp.phrases.of(cmPhrases()),
         CM.EditorView.contentAttributes.of({ autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' }),
         CM.EditorView.updateListener.of((u) => onViewUpdate(u, d)),
-        CM.EditorView.domEventHandlers({ focus: (_e, v) => { setFocus(paneOfView.get(v)); } }),
+        CM.EditorView.domEventHandlers({
+          focus: (_e, v) => { setFocus(paneOfView.get(v)); },
+          paste: (e) => aula.onPaste(e, d.rec.id),
+          drop: (e) => aula.onDrop(e, d.rec.id),
+        }),
       ],
     }),
   });
@@ -1038,6 +1043,7 @@ async function findDocByHandle(handle) {
 }
 
 async function openFileObject(file, handle, paneId, dir = null) {
+  if (/\.mpaula$/i.test(file.name)) { await aula.openExerciseFile(file); return; }
   if (isImageFile(file)) {
     // Las imágenes no se abren como texto: se guardan en el espacio de trabajo y se ven en la vista previa.
     const asset = dir ? { name: file.name, blob: file, size: file.size } : await addImage(file);
@@ -1531,7 +1537,7 @@ async function setWsFolders(list) {
 
 const refreshDocList = debounce(async () => {
   if ($('#sidebar').hidden) return;
-  const all = (await db.allDocs()).sort((a, b) => a.name.localeCompare(b.name));
+  const all = (await db.allDocs()).filter((r) => !aula.hiddenInList(r)).sort((a, b) => a.name.localeCompare(b.name));
   const folders = await getWsFolders();
   for (const r of all) {
     let p = r.folder || '';
@@ -2407,6 +2413,7 @@ const MENUS = {
       ...others.map((p) => ({ label: p.name, disabled: true })),
     ];
   },
+  aula: () => aula.menuItems(),
   help: () => [
     { label: t('lang.whatRuns'), action: cmds.languagesTable },
     { label: t('sc.title'), action: cmds.shortcuts },
@@ -2414,7 +2421,7 @@ const MENUS = {
   ],
 };
 
-const MENU_ORDER = ['file', 'edit', 'view', 'language', 'run', 'window', 'help'];
+const MENU_ORDER = ['file', 'edit', 'view', 'language', 'run', 'window', 'aula', 'help'];
 
 function openTopMenu(btn) {
   const r = btn.getBoundingClientRect();
@@ -2685,6 +2692,21 @@ async function start() {
     assetDataUrl: (a) => blobToDataUrl(a.blob, a.id ? a.id + ':' + a.updated : null),
   });
 
+  await aula.initAula({
+    allDocs: () => allDocTexts(),
+    docText: (id) => (id ? docTextById(id) : null),
+    createDoc: (o) => createDoc(o),
+    showDoc: (id) => showDoc(id),
+    closeTabsExcept: (keep) => {
+      for (const pane of [...layout.panes]) for (const id of [...pane.tabs]) if (!keep.includes(id)) closeTab(pane.id, id, { keepPane: true });
+    },
+    buildPage: (host, files) => runner.buildPage(host, files),
+    refreshDocList: () => refreshDocList(),
+    downloadBlob: (blob, name) => downloadBlob(blob, name),
+    showMenu: (items, pos, btn) => showMenu(items, pos, btn),
+    onLayout: () => { for (const v of allViews()) v.requestMeasure(); },
+  });
+
   syncViewport();
   applySettings();
   renderWinLabel();
@@ -2702,6 +2724,8 @@ async function start() {
     history.replaceState(null, '', url);
   }
 
+  // Quien llega por el enlace de un ejercicio no necesita el documento de bienvenida.
+  if (WID === 'main' && !(await db.get('initialized')) && location.hash.includes('aula=')) await db.set('initialized', true);
   if (WID === 'main' && !(await db.get('initialized'))) {
     await db.set('initialized', true);
     const welcome = t('welcome.doc');
@@ -2724,6 +2748,7 @@ async function start() {
 
   const v = activeView();
   if (v && !isTouch()) v.focus();
+  await aula.openPending();
 }
 
 window.addEventListener('pagehide', () => {
