@@ -881,3 +881,20 @@ table.res th, table.info-table th { background: var(--bg-3); font-weight: 600; }
 .aula-table td:nth-child(2) { white-space: normal; min-width: 120px; }
 .aula-table .btn.sm { padding: 4px 9px; font-size: 12px; }
 .menu-btn[hidden] { display: none !important; }
+
+/* Reproducción del historial de escritura */
+.modal.aula-replay { width: min(980px, calc(100vw - 24px)); max-height: calc(var(--vvh) - 40px); display: flex; flex-direction: column; padding-bottom: 0; }
+.aula-replay .aula-hint.ok { color: var(--ok); }
+.aula-replay .aula-hint.warn { color: var(--dirty); }
+.aula-rp-tabs { display: flex; gap: 4px; margin: 4px 16px 0; flex-wrap: wrap; }
+.aula-rp-tab { border: 1px solid var(--line); border-bottom: 0; background: var(--bg-2); color: var(--text-dim); border-radius: 7px 7px 0 0; padding: 5px 12px; font: 12.5px var(--mono); cursor: pointer; }
+.aula-rp-tab.on { background: var(--bg-editor); color: var(--text); font-weight: 600; }
+.aula-rp-code { margin: 0 16px; padding: 12px 14px; min-height: 260px; max-height: 46vh; overflow: auto; background: var(--bg-editor); border: 1px solid var(--line); border-radius: 0 8px 8px 8px; font: 12.5px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; tab-size: 2; }
+.aula-rp-code mark { background: #ffe58a; color: #241c00; border-radius: 2px; }
+.aula-rp-code mark.k-x, .aula-rp-code mark.k-b { background: #ffb4a8; color: #3a0700; }
+.aula-rp-controls { display: flex; align-items: center; gap: 10px; margin: 10px 16px 0; }
+.aula-rp-controls input[type="range"] { flex: 1; accent-color: var(--accent); }
+.aula-rp-controls select { padding: 5px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg-editor); color: var(--text); }
+.aula-rp-clock { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.aula-rp-kind { display: block; margin: 6px 16px 0; font-size: 12.5px; font-weight: 600; min-height: 1.2em; }
+.aula-rp-kind.warn { color: var(--danger); }

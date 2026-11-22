@@ -26,7 +26,8 @@ const NAME_KEY = 'aula:name';
 
 let api = null;
 let active = null; // { ex, folder, docIds: {name: id}, name, startedAt, activeMs, events: [], lastResults, submittedAt }
-let lastCopy = '';
+let lastCopy = null; // { text, docId }: lo último que se copió desde un editor de Multipad
+let allowedExternalPaste = false;
 let saveSoon = null;
 
 /* ---------------- utilidades ---------------- */
@@ -101,6 +102,8 @@ function validate(raw) {
     files,
     tests,
     exam: !!raw.exam,
+    // Ejercicios de la versión 1.5 no traen esta opción: ahí solo el examen bloqueaba el pegado.
+    blockPaste: raw.blockPaste === undefined ? !!raw.exam : (!!raw.blockPaste || !!raw.exam),
     showResults: raw.showResults !== false,
     salt: str(raw.salt, 40),
   };
@@ -231,7 +234,7 @@ async function startExercise(ex) {
   if (!active || active.ex.id !== ex.id) {
     const ok = await confirmModal({
       title: t('aula.openTitle', { title: ex.title }),
-      text: t('aula.openText', { n: ex.files.length, tests: ex.tests.length }) + (ex.exam ? ' ' + t('aula.openExam') : ''),
+      text: t('aula.openText', { n: ex.files.length, tests: ex.tests.length }) + (ex.blockPaste ? ' ' + t('aula.openBlock') : '') + (ex.exam ? ' ' + t('aula.openExam') : ''),
       buttons: [t('ui.cancel'), t('aula.openOk')],
     });
     if (!ok) return;
@@ -250,6 +253,7 @@ async function startExercise(ex) {
     events: [],
     lastResults: null,
     submittedAt: null,
+    history: { events: [], truncated: false },
   };
   active.ex = ex;
   // Crea los archivos iniciales que falten (si ya los tenía, se conserva su trabajo).
@@ -362,6 +366,7 @@ a{color:${dark ? '#6ea2ff' : '#1f63e6'}}img{max-width:100%}li{margin:.2em 0}
     if (active.ex.tests.length) {
       body.append(el('p', { class: 'aula-hint', text: active.ex.showResults ? t('aula.hintCheck', { n: active.ex.tests.length }) : t('aula.hintHidden') }));
     }
+    if (active.ex.blockPaste) body.append(el('p', { class: 'aula-hint', text: t('aula.hintBlock') }));
   } else {
     $('#aulaDrawerTitle').textContent = t('aula.results');
     if (!active.ex.tests.length) body.append(el('p', { class: 'aula-hint', text: t('aula.noTests') }));
@@ -430,6 +435,8 @@ async function submit() {
       events: active.events.slice(-200),
     } : null,
     files: files.map((f) => f.name),
+    writing: writingStats(),
+    history: { files: active.ex.files.map((f) => f.name), truncated: !!active.history?.truncated, events: active.history?.events || [] },
   };
   meta.fingerprint = await fingerprint(meta, files);
   const zip = makeZip([...files.map((f) => ({ path: f.name, text: f.text })), { path: 'entrega.json', text: JSON.stringify(meta, null, 2) }]);
@@ -443,8 +450,11 @@ async function submit() {
 // el formato puede recalcularla.
 function fingerprint(meta, files) {
   const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
-  return sha256(JSON.stringify([meta.exercise.salt, meta.exercise.id, meta.student, meta.submittedAt, meta.tests.passed,
-    meta.exam ? [meta.exam.leaves, meta.exam.pastesBlocked] : null, sorted.map((f) => [f.name, normText(f.text)])]));
+  const parts = [meta.exercise.salt, meta.exercise.id, meta.student, meta.submittedAt, meta.tests.passed,
+    meta.exam ? [meta.exam.leaves, meta.exam.pastesBlocked] : null, sorted.map((f) => [f.name, normText(f.text)])];
+  // Desde la versión 1.6 la huella cubre también el historial de escritura.
+  if (meta.writing) parts.push(meta.writing, meta.history?.events || []);
+  return sha256(JSON.stringify(parts));
 }
 
 async function leaveExercise() {
@@ -457,29 +467,55 @@ async function leaveExercise() {
   api.refreshDocList();
 }
 
-/* ---------------- modo examen ---------------- */
+/* ---------------- bloqueo de pegado e historial de escritura ---------------- */
 
-const isExamDoc = (docId) => !!active?.ex.exam && Object.values(active.docIds).includes(docId);
+const exerciseDocIds = () => (active ? Object.values(active.docIds) : []);
+const isExerciseDoc = (docId) => exerciseDocIds().includes(docId);
+const blocks = () => !!active && (active.ex.blockPaste || active.ex.exam);
+const blocksDoc = (docId) => blocks() && isExerciseDoc(docId);
+const BULK = 30; // caracteres que entran de una sola vez sin pegar: un teclado de celular que pega por su cuenta, un programa que escribe solo…
+
+// Durante un ejercicio con bloqueo no se crean ni se abren otros archivos: por ahí podría entrar código de afuera.
+export function filesLocked() {
+  if (!blocks()) return false;
+  toast(t('aula.filesLocked'));
+  return true;
+}
 
 function logEvent(type, extra = {}) {
-  if (!active?.ex.exam) return;
+  if (!active) return;
   active.events.push({ type, at: Date.now(), ...extra });
   if (active.events.length > 500) active.events.splice(0, active.events.length - 500);
   saveActiveSoon();
 }
 
-// Devuelve true si el pegado se bloqueó (texto que no se copió dentro de Multipad).
+// Lo que se copia en un editor de Multipad. Solo eso se puede volver a pegar en un ejercicio con bloqueo,
+// y solo si salió de los archivos del propio ejercicio.
+export function onCopy(view, docId) {
+  const st = view.state;
+  const ranges = st.selection.ranges;
+  const text = ranges.every((r) => r.empty)
+    ? ranges.map((r) => st.doc.lineAt(r.head).text + '\n').join('')
+    : ranges.filter((r) => !r.empty).map((r) => st.sliceDoc(r.from, r.to)).join(st.lineBreak);
+  lastCopy = { text, docId };
+}
+
+// Devuelve true si el pegado se bloqueó.
 export function onPaste(e, docId) {
-  if (!isExamDoc(docId)) return false;
+  allowedExternalPaste = false;
+  if (!isExerciseDoc(docId)) return false;
   const text = normText(e.clipboardData?.getData('text/plain') || '').trim();
-  if (!text || text === normText(lastCopy).trim()) return false;
+  if (!text) return false;
+  const internal = lastCopy && isExerciseDoc(lastCopy.docId) && normText(lastCopy.text).trim() === text;
+  if (internal) return false;
+  if (!blocks()) { allowedExternalPaste = true; return false; }
   e.preventDefault();
   logEvent('paste', { chars: text.length });
   toast(t('aula.pasteBlocked'));
   return true;
 }
 export function onDrop(e, docId) {
-  if (!isExamDoc(docId)) return false;
+  if (!blocksDoc(docId)) return false;
   if (e.dataTransfer?.types?.includes('text/plain') && !e.dataTransfer.types.includes('application/x-multipad-tab')) {
     e.preventDefault();
     logEvent('paste', { drop: true });
@@ -487,6 +523,72 @@ export function onDrop(e, docId) {
     return true;
   }
   return false;
+}
+
+// Filtro de transacciones: un bloque largo que entra "tecleado" de una vez (sin evento de pegar) también se bloquea.
+// Devuelve true para descartar la transacción.
+export function rejectInsert(docId, tr, userEvent) {
+  if (!blocksDoc(docId) || !tr.docChanged || !/^input\.type/.test(userEvent || '')) return false;
+  let big = false;
+  tr.changes.iterChanges((_fa, _ta, _fb, _tb, ins) => { if (ins.length >= BULK) big = true; });
+  if (!big) return false;
+  logEvent('paste', { chars: tr.changes.newLength - tr.changes.length, typed: true });
+  toast(t('aula.pasteBlocked'));
+  return true;
+}
+
+// Clase de cambio: t tecleado, c autocompletado, p pegado de dentro del ejercicio, x pegado de fuera,
+// b bloque grande sin pegar, d borrado, u deshacer o rehacer, o otro comando (duplicar línea, ordenar…).
+function kindOf(userEvent, inserted, deleted) {
+  const ue = userEvent || '';
+  if (/^(undo|redo)/.test(ue)) return 'u';
+  if (/^input\.paste|^input\.drop/.test(ue)) { const k = allowedExternalPaste ? 'x' : 'p'; allowedExternalPaste = false; return k; }
+  if (/^input\.complete/.test(ue)) return 'c';
+  if (/^input\.type/.test(ue)) return inserted >= BULK ? 'b' : 't';
+  if (/^delete/.test(ue) || (!inserted && deleted)) return 'd';
+  return 'o';
+}
+
+// Cada cambio de un archivo del ejercicio queda en el historial: [ms desde el inicio, archivo, clase, [[desde, hasta, texto]…]].
+export function onEdit(docId, tr, userEvent) {
+  if (!active || !tr.docChanged) return;
+  const fileIdx = active.ex.files.findIndex((f) => active.docIds[f.name] === docId);
+  if (fileIdx < 0) return;
+  const h = active.history || (active.history = { events: [], truncated: false });
+  if (h.truncated) return;
+  const changes = [];
+  let inserted = 0, deleted = 0;
+  tr.changes.iterChanges((fa, ta, _fb, _tb, ins) => { const text = ins.toString(); changes.push([fa, ta, text]); inserted += text.length; deleted += ta - fa; });
+  const kind = kindOf(userEvent, inserted, deleted);
+  const now = Date.now() - active.startedAt;
+  const last = h.events[h.events.length - 1];
+  // Escritura seguida en el mismo lugar: se junta en un solo evento para que el historial no crezca de más.
+  if (last && kind === 't' && last[2] === 't' && last[1] === fileIdx && changes.length === 1 && last[3].length === 1
+      && changes[0][0] === changes[0][1] && changes[0][0] === last[3][0][0] + last[3][0][2].length && last[3][0][0] === last[3][0][1]
+      && last[3][0][2].length < 24 && now - (last[4] ?? last[0]) < 2000) {
+    last[3][0][2] += changes[0][2];
+    last[4] = now;
+  } else {
+    h.events.push([now, fileIdx, kind, changes]);
+  }
+  if (h.events.length > 30000) h.truncated = true;
+  saveActiveSoon();
+}
+
+function statsFrom(events, pastesBlocked) {
+  const st = { typed: 0, moved: 0, external: 0, deleted: 0, bulkEvents: 0, pastesBlocked };
+  for (const ev of events || []) {
+    const ins = ev[3].reduce((n, c) => n + c[2].length, 0);
+    st.deleted += ev[3].reduce((n, c) => n + (c[1] - c[0]), 0);
+    if (ev[2] === 't' || ev[2] === 'c') st.typed += ins;
+    else if (ev[2] === 'p' || ev[2] === 'o') st.moved += ins;
+    else if (ev[2] === 'x' || ev[2] === 'b') { st.external += ins; if (ins >= BULK) st.bulkEvents++; }
+  }
+  st.handPct = st.typed + st.external ? Math.round((100 * st.typed) / (st.typed + st.external)) : 100;
+  return st;
+}
+function writingStats() {
+  return { ...statsFrom(active.history?.events, active.events.filter((e) => e.type === 'paste').length), truncated: !!active.history?.truncated };
 }
 
 // En examen, la lista del panel lateral muestra solo los archivos del examen.
@@ -523,7 +625,7 @@ async function editor(existing = null) {
   const all = (await api.allDocs()).sort((a, b) => ((a.folder || '') + '/' + a.name).localeCompare((b.folder || '') + '/' + b.name));
   const ex = existing ? structuredClone(existing) : {
     mp: 'aula', v: 1, id: uid() + Date.now().toString(36), title: '', instructions: '', files: [], tests: [],
-    exam: false, showResults: true, salt: uid() + uid(), srcIds: {},
+    exam: false, blockPaste: true, showResults: true, salt: uid() + uid(), srcIds: {},
   };
   ex.srcIds = ex.srcIds || {};
 
@@ -621,8 +723,14 @@ async function editor(existing = null) {
     drawTests();
   });
 
+  const blockPaste = el('input', { type: 'checkbox' });
+  blockPaste.checked = ex.blockPaste !== false;
   const exam = el('input', { type: 'checkbox' });
   exam.checked = ex.exam;
+  // El examen siempre bloquea el pegado.
+  const syncBlock = () => { if (exam.checked) blockPaste.checked = true; blockPaste.disabled = exam.checked; };
+  exam.addEventListener('change', syncBlock);
+  syncBlock();
   const showRes = el('input', { type: 'checkbox' });
   showRes.checked = ex.showResults;
 
@@ -630,6 +738,7 @@ async function editor(existing = null) {
     ex.title = title.value.trim();
     ex.instructions = instr.value;
     ex.exam = exam.checked;
+    ex.blockPaste = blockPaste.checked || exam.checked;
     ex.showResults = showRes.checked;
     // Se descartan las pruebas con campos obligatorios vacíos (en "atributo" el valor es opcional).
     ex.tests = ex.tests.filter((x) => FIELDS[x.type].every((k) => (x.type === 'attr' && k === 'value') || String(x[k] ?? '').trim() !== ''));
@@ -683,6 +792,7 @@ async function editor(existing = null) {
         el('p', { class: 'hint', text: t('aula.ed.testsHint') }), testList,
         el('div', { class: 'row' }, addTest, tryBtn, trySummary)),
       el('section', {}, el('h3', { text: '4. ' + t('aula.ed.s4') }),
+        el('label', { class: 'aula-check' }, blockPaste, el('span', {}, el('b', { text: t('aula.ed.blockPaste') }), el('span', { class: 'hint', text: t('aula.ed.blockPasteHint') }))),
         el('label', { class: 'aula-check' }, exam, el('span', {}, el('b', { text: t('aula.ed.exam') }), el('span', { class: 'hint', text: t('aula.ed.examHint') }))),
         el('label', { class: 'aula-check' }, showRes, el('span', {}, el('b', { text: t('aula.ed.showRes') }), el('span', { class: 'hint', text: t('aula.ed.showResHint') })))),
       el('section', {}, el('h3', { text: '5. ' + t('aula.ed.s5') }),
@@ -783,8 +893,8 @@ function csv(rows) {
   }).join(',')).join('\r\n');
 }
 
-async function review(initial = null) {
-  let subs = [];
+async function review(initial = null, keep = null) {
+  let subs = keep || [];
   const box = el('div', { class: 'modal wide aula-review', role: 'dialog' }, el('h2', { text: t('aula.rev.title') }));
   const intro = el('p', { class: 'hint', text: t('aula.rev.intro') });
   const pick = el('button', { type: 'button', class: 'btn primary', text: t('aula.rev.pick') });
@@ -800,7 +910,8 @@ async function review(initial = null) {
     table.textContent = '';
     exportBtn.disabled = !subs.length;
     if (!subs.length) return;
-    const head = ['aula.rev.student', 'aula.rev.exercise', 'aula.rev.when', 'aula.rev.tests', 'aula.rev.time', 'aula.rev.leaves', 'aula.rev.pastes', 'aula.rev.check', ''];
+    const oneExercise = subs.every((x) => x.ex.id === subs[0].ex.id);
+    const head = ['aula.rev.student', oneExercise ? null : 'aula.rev.exercise', 'aula.rev.when', 'aula.rev.tests', 'aula.rev.time', 'aula.rev.hand', 'aula.rev.pastes', 'aula.rev.leaves', 'aula.rev.check', ''].filter((k) => k !== null);
     const tbl = el('table', { class: 'aula-table' }, el('thead', {}, el('tr', {}, ...head.map((k) => el('th', { text: k ? t(k) : '' })))));
     const tb = el('tbody');
     subs.sort((a, b) => a.meta.student.localeCompare(b.meta.student));
@@ -811,17 +922,22 @@ async function review(initial = null) {
       const openBtn = el('button', { type: 'button', class: 'btn sm', text: t('aula.rev.open') });
       openBtn.addEventListener('click', async () => { const folder = await openSubmission(s); close(); toast(t('aula.rev.opened', { folder })); });
       const reBtn = el('button', { type: 'button', class: 'btn sm', text: t('aula.rev.recheck') });
+      const playBtn = el('button', { type: 'button', class: 'btn sm', text: t('aula.rev.replay') });
+      playBtn.addEventListener('click', () => replay(s, () => review(null, subs)));
+      const w = m.writing;
+      const pastes = w ? w.pastesBlocked : m.exam?.pastesBlocked;
       reBtn.addEventListener('click', async () => { reBtn.disabled = true; reBtn.textContent = t('aula.checking'); s.recheck = await runTests(s.files, s.ex.tests); draw(); });
       tb.append(el('tr', {},
         el('td', {}, el('b', { text: m.student })),
-        el('td', { text: s.ex.title }),
+        oneExercise ? null : el('td', { text: s.ex.title }),
         el('td', { text: fmtTime(m.submittedAt) }),
         el('td', { class: total && passed === total ? 'ok' : '', text: total ? `${passed}/${total}` + (s.recheck ? ' ↻' : '') : '—' }),
         el('td', { text: t('aula.minutes', { n: m.activeMinutes ?? 0 }) }),
+        el('td', { class: w ? (w.handPct < 90 || w.bulkEvents ? 'warn' : 'ok') : '', text: w ? `${w.handPct}%` + (w.bulkEvents ? ` · ${t('aula.rev.blocks', { n: w.bulkEvents })}` : '') : '—' }),
+        el('td', { class: pastes ? 'warn' : '', text: pastes == null ? '—' : String(pastes) }),
         el('td', { class: m.exam?.leaves ? 'warn' : '', text: m.exam ? `${m.exam.leaves} (${Math.round((m.exam.awaySeconds || 0) / 60)} min)` : '—' }),
-        el('td', { class: m.exam?.pastesBlocked ? 'warn' : '', text: m.exam ? String(m.exam.pastesBlocked) : '—' }),
         el('td', { class: s.intact ? 'ok' : 'warn', text: s.intact ? t('aula.rev.intact') : t('aula.rev.altered') }),
-        el('td', { class: 'acts' }, openBtn, reBtn)));
+        el('td', { class: 'acts' }, openBtn, playBtn, reBtn)));
     }
     tbl.append(tb);
     table.append(tbl, el('p', { class: 'hint', text: t('aula.rev.legend') }));
@@ -842,15 +958,105 @@ async function review(initial = null) {
   box.addEventListener('dragleave', () => drop.classList.remove('over'));
   box.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); const f = [...e.dataTransfer.files].filter((x) => /\.zip$/i.test(x.name)); if (f.length) load(f); });
   exportBtn.addEventListener('click', () => {
-    const rows = [[t('aula.rev.student'), t('aula.rev.exercise'), t('aula.rev.when'), t('aula.rev.passed'), t('aula.rev.total'), t('aula.rev.time'), t('aula.rev.leaves'), t('aula.rev.away'), t('aula.rev.pastes'), t('aula.rev.check')]];
+    const rows = [[t('aula.rev.student'), t('aula.rev.exercise'), t('aula.rev.when'), t('aula.rev.passed'), t('aula.rev.total'), t('aula.rev.time'), t('aula.rev.hand'), t('aula.rev.leaves'), t('aula.rev.away'), t('aula.rev.pastes'), t('aula.rev.check')]];
     for (const s of subs) {
       const m = s.meta;
       rows.push([m.student, s.ex.title, new Date(m.submittedAt).toISOString(), s.recheck ? score(s.recheck) : m.tests?.passed ?? '', s.recheck ? s.recheck.length : m.tests?.total ?? '',
-        m.activeMinutes ?? '', m.exam?.leaves ?? '', m.exam ? Math.round((m.exam.awaySeconds || 0) / 60) : '', m.exam?.pastesBlocked ?? '', s.intact ? t('aula.rev.intact') : t('aula.rev.altered')]);
+        m.activeMinutes ?? '', m.writing ? m.writing.handPct : '', m.exam?.leaves ?? '', m.exam ? Math.round((m.exam.awaySeconds || 0) / 60) : '',
+        m.writing ? m.writing.pastesBlocked : m.exam?.pastesBlocked ?? '', s.intact ? t('aula.rev.intact') : t('aula.rev.altered')]);
     }
     api.downloadBlob(new Blob(['﻿' + csv(rows)], { type: 'text/csv' }), 'entregas-' + slug(subs[0]?.ex.title) + '.csv');
   });
   if (initial) load(initial);
+  else if (subs.length) { intro.textContent = t('aula.rev.loaded', { n: subs.length }); draw(); }
+}
+
+/* ---------------- docente: reproducir cómo se escribió ---------------- */
+
+function replay(s, back) {
+  const m = s.meta;
+  const hist = m.history;
+  const names = hist?.files || s.ex.files.map((f) => f.name);
+  const starts = names.map((n) => s.ex.files.find((f) => f.name === n)?.content ?? '');
+  const events = hist?.events || [];
+  const box = el('div', { class: 'modal wide aula-replay', role: 'dialog' }, el('h2', { text: t('aula.rp.title', { name: m.student }) }));
+  const closeBtn = el('button', { type: 'button', class: 'btn primary', text: t('ui.close') });
+  if (!events.length) {
+    box.append(el('p', { class: 'aula-hint', text: hist ? t('aula.rp.empty') : t('aula.rp.none') }), el('div', { class: 'actions' }, closeBtn));
+    const close = openModal(box); closeBtn.addEventListener('click', () => { close(); back?.(); });
+    return;
+  }
+  const w = m.writing || statsFrom(events, 0);
+  const tabs = el('div', { class: 'aula-rp-tabs' });
+  const code = el('pre', { class: 'aula-rp-code' });
+  const slider = el('input', { type: 'range', min: '0', max: String(events.length), value: '0', 'aria-label': t('aula.rp.position') });
+  const play = el('button', { type: 'button', class: 'btn primary', text: t('aula.rp.play') });
+  const speed = el('select', { 'aria-label': t('aula.rp.speed') }, ...[1, 4, 16].map((x) => el('option', { value: String(x), text: `${x}×` })));
+  speed.value = '4';
+  const clock = el('span', { class: 'aula-rp-clock' });
+  const kindLabel = el('span', { class: 'aula-rp-kind' });
+  const totalMs = events[events.length - 1][4] ?? events[events.length - 1][0];
+  let pos = 0, file = events[0][1], contents = [...starts], timer = null;
+
+  const apply = (c, ev) => {
+    let text = c[ev[1]];
+    for (const [fa, ta, ins] of [...ev[3]].reverse()) text = text.slice(0, fa) + ins + text.slice(ta);
+    c[ev[1]] = text;
+  };
+  const stateAt = (n) => { const c = [...starts]; for (let i = 0; i < n; i++) apply(c, events[i]); return c; };
+  const fmt = (ms) => { const sec = Math.round(ms / 1000); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
+  const draw = () => {
+    tabs.textContent = '';
+    names.forEach((n, i) => {
+      const b = el('button', { type: 'button', class: 'aula-rp-tab' + (i === file ? ' on' : ''), text: n });
+      b.addEventListener('click', () => { file = i; draw(); });
+      tabs.append(b);
+    });
+    const last = events[pos - 1];
+    code.textContent = '';
+    const text = contents[file];
+    if (last && last[1] === file && last[3].length === 1 && last[3][0][2]) {
+      const [fa, , ins] = last[3][0];
+      code.append(document.createTextNode(text.slice(0, fa)), el('mark', { class: 'k-' + last[2], text: ins }), document.createTextNode(text.slice(fa + ins.length)));
+    } else code.textContent = text;
+    code.querySelector('mark')?.scrollIntoView({ block: 'nearest' });
+    slider.value = String(pos);
+    clock.textContent = t('aula.rp.time', { t: fmt(last ? last[0] : 0), total: fmt(totalMs) });
+    kindLabel.textContent = last ? t('aula.rp.k.' + last[2]) : '';
+    kindLabel.className = 'aula-rp-kind' + (last && (last[2] === 'x' || last[2] === 'b') ? ' warn' : '');
+  };
+  const step = () => {
+    if (pos >= events.length) { stop(); return; }
+    apply(contents, events[pos]);
+    file = events[pos][1];
+    pos++;
+    draw();
+    const next = events[pos];
+    if (!next) { stop(); return; }
+    const gap = Math.min(1200, Math.max(40, next[0] - (events[pos - 1][4] ?? events[pos - 1][0])));
+    timer = setTimeout(step, gap / Number(speed.value));
+  };
+  const stop = () => { clearTimeout(timer); timer = null; play.textContent = t('aula.rp.play'); };
+  play.addEventListener('click', () => {
+    if (timer) { stop(); return; }
+    if (pos >= events.length) { pos = 0; contents = [...starts]; }
+    play.textContent = t('aula.rp.pause');
+    step();
+  });
+  slider.addEventListener('input', () => { stop(); pos = Number(slider.value); contents = stateAt(pos); if (pos) file = events[pos - 1][1]; draw(); });
+
+  // ¿El historial reproduce exactamente el código entregado?
+  const final = stateAt(events.length);
+  const matches = names.every((n, i) => normText(final[i]) === normText(s.files.find((f) => f.name === n)?.text ?? ''));
+  const stats = el('p', { class: 'aula-hint', text: t('aula.rp.stats', { typed: w.typed, moved: w.moved, external: w.external, deleted: w.deleted, pct: w.handPct }) });
+  const check = el('p', { class: 'aula-hint ' + (matches && !hist.truncated ? 'ok' : 'warn'), text: hist.truncated ? t('aula.rp.truncated') : matches ? t('aula.rp.match') : t('aula.rp.mismatch') });
+  box.append(stats, check, tabs, code,
+    el('div', { class: 'aula-rp-controls' }, play, slider, speed, clock), kindLabel,
+    el('p', { class: 'aula-hint', text: t('aula.rp.legend') }),
+    el('div', { class: 'actions' }, closeBtn));
+  const close = openModal(box);
+  closeBtn.addEventListener('click', () => { stop(); close(); back?.(); });
+  draw();
 }
 
 /* ---------------- menú e inicio ---------------- */
@@ -904,10 +1110,6 @@ export async function initAula(a) {
     ], { x: r.right - 220, y: r.bottom + 2 }, $('#aulaMore'));
   });
 
-  // Copias hechas dentro de Multipad: esas sí se pueden pegar en un examen.
-  const remember = (e) => { lastCopy = e.clipboardData?.getData('text/plain') || String(getSelection() || ''); };
-  document.addEventListener('copy', remember);
-  document.addEventListener('cut', remember);
 
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') markAway(); else markBack(); });
   window.addEventListener('blur', () => setTimeout(() => { if (!document.hasFocus()) markAway(); }, 0));
