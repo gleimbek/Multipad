@@ -495,7 +495,11 @@ function createView(d, paneId) {
           focus: (_e, v) => { setFocus(paneOfView.get(v)); },
           paste: (e) => aula.onPaste(e, d.rec.id),
           drop: (e) => aula.onDrop(e, d.rec.id),
+          copy: (_e, v) => { aula.onCopy(v, d.rec.id); return false; },
+          cut: (_e, v) => { aula.onCopy(v, d.rec.id); return false; },
         }),
+        // Modo aula: descarta bloques largos que entran "tecleados" de una vez en un ejercicio con bloqueo de pegado.
+        CM.EditorState.transactionFilter.of((tr) => (aula.rejectInsert(d.rec.id, tr, tr.annotation(CM.Transaction.userEvent)) ? [] : tr)),
       ],
     }),
   });
@@ -514,6 +518,7 @@ function onViewUpdate(u, d) {
     for (const tr of u.transactions) {
       if (!tr.docChanged || tr.annotation(Remote)) continue;
       local = true;
+      aula.onEdit(d.rec.id, tr, tr.annotation(CM.Transaction.userEvent));
       // Otras vistas del mismo documento en esta ventana (documento clonado en otro panel).
       for (const v of d.views.values()) {
         if (v !== u.view) v.dispatch({ changes: tr.changes, annotations: [Remote.of(true), CM.Transaction.addToHistory.of(false)] });
@@ -1046,6 +1051,7 @@ async function findDocByHandle(handle) {
 
 async function openFileObject(file, handle, paneId, dir = null) {
   if (/\.mpaula$/i.test(file.name)) { await aula.openExerciseFile(file); return; }
+  if (aula.filesLocked()) return;
   if (isImageFile(file)) {
     // Las imágenes no se abren como texto: se guardan en el espacio de trabajo y se ven en la vista previa.
     const asset = dir ? { name: file.name, blob: file, size: file.size } : await addImage(file);
@@ -1088,6 +1094,7 @@ async function openHandle(handle, paneId, dir = null) {
 }
 
 async function openFiles() {
+  if (aula.filesLocked()) return;
   if (window.showOpenFilePicker) {
     try {
       const handles = await filePicker('showOpenFilePicker', { multiple: true });
@@ -1238,6 +1245,7 @@ async function saveAll() {
 }
 
 async function newDoc(paneId, lang) {
+  if (aula.filesLocked()) return;
   const rec = await createDoc({ name: await nextUntitledName(), lang });
   await openDocInPane(rec.id, paneId || focusedPane().id);
 }
@@ -1291,6 +1299,7 @@ async function saveFolders() {
 }
 
 async function addFolder(handle) {
+  if (aula.filesLocked()) return;
   for (const f of folders) if (await f.handle.isSameEntry(handle)) { toggleSidebar(true); return; }
   folders.push({ id: uid(), handle, name: handle.name });
   expanded.add(folders[folders.length - 1].id);
@@ -1300,6 +1309,7 @@ async function addFolder(handle) {
 }
 
 async function openFolder() {
+  if (aula.filesLocked()) return;
   if (!window.showDirectoryPicker) {
     toast(t('folder.unsupported'));
     return;
@@ -1743,6 +1753,7 @@ async function deleteWsFolder(f) {
 }
 
 async function newDocInFolder(f) {
+  if (aula.filesLocked()) return;
   const rec = await createDoc({ name: await nextUntitledName(), folder: f });
   collapsedFolders.delete(f);
   await openDocInPane(rec.id, focusedPane().id);
