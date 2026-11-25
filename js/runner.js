@@ -336,13 +336,14 @@ export function createRunner(api) {
       if (!m || isExternal(m[1])) return tag;
       const doc = await lookup(m[1]);
       if (!doc) { missing.push(m[1]); return tag; }
-      return `<style data-file="${escapeHtml(doc.name)}">\n${doc.text}\n</style>`;
+      // data-href guarda la ruta original: las pruebas del modo aula la usan para que link[href] siga funcionando.
+      return `<style data-file="${escapeHtml(doc.name)}" data-href="${escapeHtml(m[1])}">\n${doc.text}\n</style>`;
     });
     html = await replaceAsync(html, /<script\b([^>]*?)\bsrc\s*=\s*["']([^"']+)["']([^>]*)>\s*<\/script>/gi, async (all, a, src, b) => {
       if (isExternal(src)) return all;
       const doc = await lookup(src);
       if (!doc) { missing.push(src); return all; }
-      const marker = `<script${a}${b} data-file="${escapeHtml(doc.name)}" data-mp="${scripts.length}">`;
+      const marker = `<script${a}${b} data-file="${escapeHtml(doc.name)}" data-src="${escapeHtml(src)}" data-mp="${scripts.length}">`;
       if (doc.id) scripts.push({ docId: doc.id, name: doc.name, marker, lines: doc.text.split('\n').length });
       return `${marker}\n${doc.text.replace(/<\/script/gi, '<\\/script')}\n</script>`;
     });

@@ -5,8 +5,9 @@
 import { $, el, uid, toast, openModal, promptModal, confirmModal, makeZip, readZip } from './util.js';
 import { t } from './i18n.js';
 import { db } from './db.js';
+import { generateTests, sameTest } from './aula-gen.js';
 
-export const TEST_TYPES = ['exists', 'count', 'text', 'style', 'attr', 'click', 'console', 'noerror', 'js'];
+export const TEST_TYPES = ['exists', 'count', 'text', 'style', 'attr', 'click', 'console', 'noerror', 'source', 'js'];
 const FIELDS = {
   exists: ['selector'],
   count: ['selector', 'n'],
@@ -16,8 +17,11 @@ const FIELDS = {
   click: ['selector', 'target', 'value'],
   console: ['value'],
   noerror: [],
+  source: ['value', 'n'],
   js: ['code'],
 };
+// Campos que se pueden dejar vacíos.
+const OPTIONAL = { attr: ['value'], source: ['n'] };
 const LIMITS = { title: 200, instructions: 50000, files: 20, fileName: 100, fileSize: 500000, tests: 60, field: 2000 };
 const HASH_KEY = 'aula=';
 const ACTIVE_KEY = 'aula:active';
@@ -130,9 +134,11 @@ export function describeTest(x) {
 
 /* ---------------- pruebas ---------------- */
 
-function harness(tests, key) {
+// src: el código tal como lo escribió el alumno, para las pruebas de tipo "source".
+function harness(tests, key, src = '') {
   const T = JSON.stringify(tests).replace(/</g, '\\u003c');
-  return `<script>(function(){var T=${T};var K=${JSON.stringify(key)};var logs=[],errs=[];
+  const S = JSON.stringify(src).replace(/</g, '\\u003c');
+  return `<script>(function(){var T=${T};var K=${JSON.stringify(key)};var S=${S};var logs=[],errs=[];
 ['log','info','warn','error','debug'].forEach(function(l){var o=console[l]||console.log;console[l]=function(){try{logs.push(Array.prototype.map.call(arguments,function(a){if(typeof a==='string')return a;try{return JSON.stringify(a)}catch(e){return String(a)}}).join(' '))}catch(e){}return o.apply(console,arguments)}});
 addEventListener('error',function(e){errs.push(e.message||'Error')});
 addEventListener('unhandledrejection',function(e){var r=e.reason;errs.push('Promise: '+(r&&r.message||r))});
@@ -153,9 +159,14 @@ case 'attr':els=all(t.selector);if(!els.length)return {ok:false,got:'-'};for(i=0
 case 'console':return {ok:has(logs.join('\\n'),t.value),got:short(logs[logs.length-1]||'-')};
 case 'noerror':return {ok:errs.length===0,got:short(errs[0]||'')};
 case 'click':var b=all(t.selector)[0];if(!b)return {ok:false,got:'-'};b.click();return wait(300).then(function(){var tg=all(t.target);if(!tg.length)return {ok:false,got:'-'};for(var j=0;j<tg.length;j++)if(has(tg[j].textContent,t.value)||has(tg[j].value,t.value))return {ok:true};return {ok:false,got:short(tg[0].textContent||tg[0].value)}});
+case 'source':var c=0,p=S.indexOf(t.value);while(p>=0&&t.value){c++;p=S.indexOf(t.value,p+t.value.length)}var need=+t.n||1;return {ok:c>=need,got:String(c)};
 case 'js':return Promise.resolve((new Function('return ('+t.code+'\\n)'))()).then(function(r){return {ok:!!r,got:short(String(r))}});
 }return {ok:false,got:'?'}}
-addEventListener('load',function(){setTimeout(function(){var out=[],i=0;(function next(){if(i>=T.length){parent.postMessage({__aula:K,results:out},'*');return}
+addEventListener('load',function(){
+// Multipad mete los .js y .css del ejercicio dentro de la página; se devuelven src y href para que script[src] y link[href] funcionen.
+try{Array.prototype.forEach.call(document.querySelectorAll('script[data-src]'),function(x){if(!x.hasAttribute('src'))x.setAttribute('src',x.getAttribute('data-src'))});
+Array.prototype.forEach.call(document.querySelectorAll('style[data-href]'),function(x){var l=document.createElement('link');l.rel='stylesheet';l.disabled=true;l.media='not all';l.setAttribute('href',x.getAttribute('data-href'));l.setAttribute('data-mp-ghost','');x.parentNode.insertBefore(l,x)})}catch(e){}
+setTimeout(function(){var out=[],i=0;(function next(){if(i>=T.length){parent.postMessage({__aula:K,results:out},'*');return}
 var r;try{r=one(T[i++])}catch(e){r={ok:false,got:short(e&&e.message||e)}}
 Promise.resolve(r).then(function(x){out.push(x);next()},function(e){out.push({ok:false,got:short(e&&e.message||e)});next()})})()},300)});
 })();<\/script>`;
@@ -170,7 +181,8 @@ export async function runTests(files, tests) {
   const { html } = await api.buildPage(host, files);
   const key = uid() + uid();
   const doctype = html.match(/^\s*<!doctype[^>]*>/i);
-  const page = doctype ? doctype[0] + harness(tests, key) + html.slice(doctype[0].length) : harness(tests, key) + html;
+  const src = files.map((f) => f.text || '').join('\n');
+  const page = doctype ? doctype[0] + harness(tests, key, src) + html.slice(doctype[0].length) : harness(tests, key, src) + html;
   return new Promise((resolve) => {
     const frame = el('iframe', { class: 'aula-test-frame', sandbox: 'allow-scripts', tabindex: '-1', 'aria-hidden': 'true' });
     let done = false;
@@ -341,6 +353,91 @@ function renderBar() {
 }
 
 let drawerTab = 'instructions';
+// Las instrucciones son Markdown; también aceptan <mark> y <span style="color:…"> (la barra de formato los inserta).
+// renderMarkdown las limpia con DOMPurify y el iframe no ejecuta scripts.
+export const TEXT_COLORS = ['#e5484d', '#3b82f6', '#22a55a', '#f08c00', '#9b5de5'];
+async function instructionsPage(md) {
+  const { renderMarkdown } = await import('../vendor/markdown.js');
+  const dark = document.documentElement.dataset.theme !== 'light';
+  return `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>
+body{margin:0;padding:14px 16px;font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;color:${dark ? '#dbe3f4' : '#172036'};background:${dark ? '#0f1529' : '#f6f8fc'}}
+h1,h2,h3{line-height:1.25;margin:1em 0 .4em}h1{font-size:20px}h2{font-size:17px}h3{font-size:15px}
+code,pre{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;background:${dark ? '#18213b' : '#e1e7f3'};border-radius:5px}
+code{padding:1px 4px}pre{padding:10px;overflow:auto}pre code{padding:0;background:none}
+mark{background:#ffe066;color:#1a1a1a;padding:0 3px;border-radius:3px}
+a{color:${dark ? '#6ea2ff' : '#1f63e6'}}img{max-width:100%}li{margin:.2em 0}
+</style></head><body>${renderMarkdown(md)}</body></html>`;
+}
+
+// Barra de formato para el cuadro de instrucciones: envuelve la selección con Markdown o con <mark>/<span>.
+function formatBar(area, onChange) {
+  const put = (text, selFrom, selTo) => {
+    area.focus();
+    // execCommand conserva Ctrl+Z; si el navegador no lo acepta, se usa setRangeText.
+    const start = area.selectionStart;
+    if (!document.execCommand('insertText', false, text)) area.setRangeText(text, area.selectionStart, area.selectionEnd, 'end');
+    area.setSelectionRange(start + selFrom, start + selTo);
+    onChange();
+  };
+  const wrap = (before, after, ph) => {
+    const sel = area.value.slice(area.selectionStart, area.selectionEnd) || ph;
+    put(before + sel + after, before.length, before.length + sel.length);
+  };
+  const lines = (fn) => {
+    const v = area.value;
+    const from = v.lastIndexOf('\n', area.selectionStart - 1) + 1;
+    let to = v.indexOf('\n', Math.max(area.selectionEnd - (area.selectionEnd > area.selectionStart ? 1 : 0), area.selectionStart));
+    if (to < 0) to = v.length;
+    area.setSelectionRange(from, to);
+    const out = v.slice(from, to).split('\n').map(fn).join('\n');
+    put(out, 0, out.length);
+  };
+  const actions = {
+    bold: () => wrap('**', '**', t('aula.fmt.text')),
+    italic: () => wrap('*', '*', t('aula.fmt.text')),
+    heading: () => lines((l) => (/^#{1,3} /.test(l) ? l.replace(/^#{1,3} /, '') : '## ' + l)),
+    bullets: () => lines((l) => (/^- /.test(l) ? l.slice(2) : '- ' + l)),
+    numbers: () => { let n = 0; lines((l) => (/^\d+\. /.test(l) ? l.replace(/^\d+\. /, '') : `${++n}. ${l}`)); },
+    code: () => wrap('`', '`', 'h1'),
+    link: () => {
+      const sel = area.value.slice(area.selectionStart, area.selectionEnd) || t('aula.fmt.text');
+      const text = `[${sel}](https://)`;
+      put(text, sel.length + 3, text.length - 1);
+    },
+    mark: () => wrap('<mark>', '</mark>', t('aula.fmt.text')),
+  };
+  const btn = (key, label, title) => {
+    const b = el('button', { type: 'button', class: 'aula-fmt-btn fmt-' + key, title, 'aria-label': title }, label);
+    b.addEventListener('mousedown', (e) => e.preventDefault()); // no perder la selección
+    b.addEventListener('click', () => actions[key]());
+    return b;
+  };
+  const bar = el('div', { class: 'aula-fmt', role: 'toolbar', 'aria-label': t('aula.fmt.bar') },
+    btn('bold', el('b', { text: 'B' }), t('aula.fmt.bold') + ' (Ctrl+B)'),
+    btn('italic', el('i', { text: 'I' }), t('aula.fmt.italic') + ' (Ctrl+I)'),
+    btn('heading', 'H', t('aula.fmt.heading')),
+    btn('bullets', '•', t('aula.fmt.bullets')),
+    btn('numbers', '1.', t('aula.fmt.numbers')),
+    btn('link', t('aula.fmt.linkShort'), t('aula.fmt.link') + ' (Ctrl+K)'),
+    btn('code', '</>', t('aula.fmt.code')),
+    el('span', { class: 'sep' }),
+    btn('mark', el('mark', { text: 'ab' }), t('aula.fmt.mark')));
+  TEXT_COLORS.forEach((c, i) => {
+    const name = t('aula.fmt.c' + i);
+    const b = el('button', { type: 'button', class: 'aula-fmt-btn swatch', title: t('aula.fmt.color', { color: name }), 'aria-label': t('aula.fmt.color', { color: name }) },
+      el('span', { style: `background:${c}` }));
+    b.addEventListener('mousedown', (e) => e.preventDefault());
+    b.addEventListener('click', () => wrap(`<span style="color:${c}">`, '</span>', t('aula.fmt.text')));
+    bar.append(b);
+  });
+  area.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+    const k = { b: 'bold', i: 'italic', k: 'link' }[e.key.toLowerCase()];
+    if (k) { e.preventDefault(); e.stopPropagation(); actions[k](); }
+  });
+  return bar;
+}
+
 async function openDrawer(tab = drawerTab) {
   if (!active) return;
   drawerTab = tab;
@@ -352,16 +449,8 @@ async function openDrawer(tab = drawerTab) {
   $('#aulaBtnCheck').classList.toggle('on', tab === 'results');
   if (tab === 'instructions') {
     $('#aulaDrawerTitle').textContent = t('aula.instructions');
-    const { renderMarkdown } = await import('../vendor/markdown.js');
-    const dark = document.documentElement.dataset.theme !== 'light';
     const frame = el('iframe', { class: 'aula-instr', sandbox: 'allow-popups allow-popups-to-escape-sandbox', title: t('aula.instructions') });
-    frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>
-body{margin:0;padding:14px 16px;font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;color:${dark ? '#dbe3f4' : '#172036'};background:${dark ? '#0f1529' : '#f6f8fc'}}
-h1,h2,h3{line-height:1.25;margin:1em 0 .4em}h1{font-size:20px}h2{font-size:17px}h3{font-size:15px}
-code,pre{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;background:${dark ? '#18213b' : '#e1e7f3'};border-radius:5px}
-code{padding:1px 4px}pre{padding:10px;overflow:auto}pre code{padding:0;background:none}
-a{color:${dark ? '#6ea2ff' : '#1f63e6'}}img{max-width:100%}li{margin:.2em 0}
-</style></head><body>${renderMarkdown(active.ex.instructions || t('aula.noInstructions'))}</body></html>`;
+    frame.srcdoc = await instructionsPage(active.ex.instructions || t('aula.noInstructions'));
     body.append(frame);
     if (active.ex.tests.length) {
       body.append(el('p', { class: 'aula-hint', text: active.ex.showResults ? t('aula.hintCheck', { n: active.ex.tests.length }) : t('aula.hintHidden') }));
@@ -630,8 +719,24 @@ async function editor(existing = null) {
   ex.srcIds = ex.srcIds || {};
 
   const title = el('input', { type: 'text', value: ex.title, placeholder: t('aula.ed.titlePh'), maxlength: String(LIMITS.title) });
-  const instr = el('textarea', { rows: '7', placeholder: t('aula.ed.instrPh'), spellcheck: 'true' });
+  const instr = el('textarea', { rows: '9', placeholder: t('aula.ed.instrPh'), spellcheck: 'true', id: 'aulaInstrInput' });
   instr.value = ex.instructions;
+  const preview = el('iframe', { class: 'aula-instr-preview', sandbox: 'allow-popups allow-popups-to-escape-sandbox', title: t('aula.fmt.preview'), hidden: true });
+  let previewSoon = null;
+  const refreshPreview = () => {
+    if (preview.hidden) return;
+    clearTimeout(previewSoon);
+    previewSoon = setTimeout(async () => { preview.srcdoc = await instructionsPage(instr.value || t('aula.noInstructions')); }, 250);
+  };
+  instr.addEventListener('input', refreshPreview);
+  const previewBtn = el('button', { type: 'button', class: 'aula-fmt-btn wide', 'aria-pressed': 'false', text: t('aula.fmt.preview') });
+  previewBtn.addEventListener('click', () => {
+    preview.hidden = !preview.hidden;
+    previewBtn.setAttribute('aria-pressed', String(!preview.hidden));
+    refreshPreview();
+  });
+  const fmtBar = formatBar(instr, refreshPreview);
+  fmtBar.append(el('span', { class: 'grow' }), previewBtn);
 
   // Archivos iniciales: se guarda su contenido al marcarlos.
   const fileList = el('div', { class: 'aula-files' });
@@ -692,9 +797,10 @@ async function editor(existing = null) {
       for (const k of FIELDS[x.type]) {
         const input = el(k === 'code' ? 'textarea' : 'input', k === 'code' ? { rows: '2', spellcheck: 'false' } : { type: k === 'n' ? 'number' : 'text', min: '1', spellcheck: 'false', autocomplete: 'off' });
         input.value = x[k] ?? '';
-        input.placeholder = t('aula.ph.' + (x.type === 'style' && k === 'value' ? 'styleValue' : x.type === 'attr' && k === 'value' ? 'attrValue' : k));
+        const special = { style: { value: 'styleValue' }, attr: { value: 'attrValue' }, source: { value: 'sourceValue', n: 'sourceN' }, click: { selector: 'clickSelector' } }[x.type]?.[k];
+        input.placeholder = t('aula.ph.' + (special && special !== 'clickSelector' ? special : k));
         input.addEventListener('input', () => { x[k] = input.value; });
-        grid.append(field(t('aula.f.' + (x.type === 'click' && k === 'selector' ? 'clickSelector' : k)), input));
+        grid.append(field(t('aula.f.' + (special || k)), input));
       }
       const label = el('input', { type: 'text', placeholder: t('aula.ph.label'), value: x.label || '' });
       label.addEventListener('input', () => { x.label = label.value; });
@@ -706,21 +812,70 @@ async function editor(existing = null) {
   const addTest = el('button', { type: 'button', class: 'btn', text: '+ ' + t('aula.ed.addTest') });
   addTest.addEventListener('click', () => { ex.tests.push({ type: 'exists', selector: '' }); drawTests(); testList.lastElementChild?.querySelector('input')?.focus(); });
 
-  const tryBtn = el('button', { type: 'button', class: 'btn', text: t('aula.ed.try') });
-  const trySummary = el('span', { class: 'aula-try' });
-  tryBtn.addEventListener('click', async () => {
-    if (!ex.tests.length) { toast(t('aula.ed.noTests')); return; }
+  // Los archivos del docente tal como están ahora. Si cambiaron desde que los marcó, son su solución:
+  // se guarda una copia (solo en su navegador, no viaja en el enlace) para compararla al revisar.
+  const solutionNote = el('p', { class: 'hint' });
+  const drawSolutionNote = () => { solutionNote.textContent = ex.solution ? t('aula.ed.solutionSaved', { when: fmtTime(ex.solution.savedAt) }) : ''; };
+  drawSolutionNote();
+  const teacherDocs = async () => {
     const docs = [];
     for (const f of ex.files) {
       const d = await api.docText(ex.srcIds[f.name]);
       docs.push({ name: f.name, text: d ? d.text : f.content, id: d?.id });
     }
+    const isSolution = docs.some((d, i) => normText(d.text) !== normText(ex.files[i].content));
+    if (isSolution) { ex.solution = { files: docs.map((d) => ({ name: d.name, content: d.text })), savedAt: Date.now() }; drawSolutionNote(); }
+    return { docs, isSolution };
+  };
+  const clean = (x) => validate({ mp: 'aula', title: 'x', tests: [x] }).tests[0];
+
+  const tryBtn = el('button', { type: 'button', class: 'btn', text: t('aula.ed.try') });
+  const trySummary = el('span', { class: 'aula-try' });
+  tryBtn.addEventListener('click', async () => {
+    if (!ex.tests.length) { toast(t('aula.ed.noTests')); return; }
+    const { docs } = await teacherDocs();
     trySummary.textContent = t('aula.checking');
-    const results = await runTests(docs, ex.tests.map((x) => validate({ mp: 'aula', title: 'x', tests: [x] }).tests[0]));
+    const results = await runTests(docs, ex.tests.map(clean));
     testResults.clear();
     results.forEach((r, i) => testResults.set(i, r));
     trySummary.textContent = t('aula.score', { ok: score(results), total: results.length });
     drawTests();
+  });
+
+  const genBtn = el('button', { type: 'button', class: 'btn', text: t('aula.ed.generate') });
+  genBtn.addEventListener('click', async () => {
+    if (!ex.files.length) { toast(t('aula.ed.needFiles')); return; }
+    const { docs, isSolution } = await teacherDocs();
+    if (!isSolution) { toast(t('aula.ed.genNeedSolution'), { timeout: 9000 }); return; }
+    genBtn.disabled = true;
+    trySummary.textContent = t('aula.ed.generating');
+    const proposed = generateTests(docs).map(clean).filter(Boolean).filter((x) => !ex.tests.some((y) => sameTest(clean(y), x)));
+    // Solo se agregan las pruebas que pasan con la solución: así no se cuela un error del generador.
+    const results = proposed.length ? await runTests(docs, proposed) : [];
+    const good = proposed.filter((_, i) => results[i]?.ok);
+    const room = Math.max(0, LIMITS.tests - ex.tests.length);
+    const added = good.slice(0, room);
+    ex.tests.push(...added);
+    testResults.clear();
+    genBtn.disabled = false;
+    trySummary.textContent = t('aula.ed.generated', { n: added.length })
+      + (proposed.length - good.length ? ' ' + t('aula.ed.genDropped', { n: proposed.length - good.length }) : '')
+      + (good.length > added.length ? ' ' + t('aula.ed.genLimit', { n: LIMITS.tests }) : '');
+    drawTests();
+  });
+
+  let clearArmed = null;
+  const clearBtn = el('button', { type: 'button', class: 'link-btn', text: t('aula.ed.clearTests') });
+  clearBtn.addEventListener('click', () => {
+    if (!ex.tests.length) return;
+    if (!clearArmed) {
+      clearBtn.textContent = t('aula.ed.clearConfirm');
+      clearArmed = setTimeout(() => { clearArmed = null; clearBtn.textContent = t('aula.ed.clearTests'); }, 4000);
+      return;
+    }
+    clearTimeout(clearArmed); clearArmed = null;
+    clearBtn.textContent = t('aula.ed.clearTests');
+    ex.tests = []; testResults.clear(); trySummary.textContent = ''; drawTests();
   });
 
   const blockPaste = el('input', { type: 'checkbox' });
@@ -741,7 +896,7 @@ async function editor(existing = null) {
     ex.blockPaste = blockPaste.checked || exam.checked;
     ex.showResults = showRes.checked;
     // Se descartan las pruebas con campos obligatorios vacíos (en "atributo" el valor es opcional).
-    ex.tests = ex.tests.filter((x) => FIELDS[x.type].every((k) => (x.type === 'attr' && k === 'value') || String(x[k] ?? '').trim() !== ''));
+    ex.tests = ex.tests.filter((x) => FIELDS[x.type].every((k) => OPTIONAL[x.type]?.includes(k) || String(x[k] ?? '').trim() !== ''));
   };
   const ready = () => {
     collect();
@@ -785,12 +940,14 @@ async function editor(existing = null) {
     el('div', { class: 'aula-scroll' },
       el('section', {}, el('h3', { text: '1. ' + t('aula.ed.s1') }),
         field(t('aula.ed.name'), title),
-        field(t('aula.ed.instr'), instr, t('aula.ed.instrHint'))),
+        el('div', { class: 'aula-field' }, el('label', { class: 'lbl', for: 'aulaInstrInput', text: t('aula.ed.instr') }), fmtBar, instr,
+          el('span', { class: 'hint', text: t('aula.ed.instrHint') }), preview)),
       el('section', {}, el('h3', { text: '2. ' + t('aula.ed.s2') }),
         el('p', { class: 'hint', text: t('aula.ed.filesHint') }), fileList),
       el('section', {}, el('h3', { text: '3. ' + t('aula.ed.s3') }),
         el('p', { class: 'hint', text: t('aula.ed.testsHint') }), testList,
-        el('div', { class: 'row' }, addTest, tryBtn, trySummary)),
+        el('div', { class: 'row' }, addTest, genBtn, tryBtn, clearBtn),
+        el('p', { class: 'aula-try-line' }, trySummary), el('p', { class: 'hint', text: t('aula.ed.genHint') }), solutionNote),
       el('section', {}, el('h3', { text: '4. ' + t('aula.ed.s4') }),
         el('label', { class: 'aula-check' }, blockPaste, el('span', {}, el('b', { text: t('aula.ed.blockPaste') }), el('span', { class: 'hint', text: t('aula.ed.blockPasteHint') }))),
         el('label', { class: 'aula-check' }, exam, el('span', {}, el('b', { text: t('aula.ed.exam') }), el('span', { class: 'hint', text: t('aula.ed.examHint') }))),
@@ -923,6 +1080,12 @@ async function review(initial = null, keep = null) {
       openBtn.addEventListener('click', async () => { const folder = await openSubmission(s); close(); toast(t('aula.rev.opened', { folder })); });
       const reBtn = el('button', { type: 'button', class: 'btn sm', text: t('aula.rev.recheck') });
       const playBtn = el('button', { type: 'button', class: 'btn sm', text: t('aula.rev.replay') });
+      const cmpBtn = el('button', { type: 'button', class: 'btn sm', text: t('aula.rev.compare') });
+      cmpBtn.addEventListener('click', async () => {
+        const sol = await solutionFor(s.ex);
+        if (!sol) { toast(t('aula.rev.noSolution'), { timeout: 9000 }); return; }
+        compare(s, sol, () => review(null, subs));
+      });
       playBtn.addEventListener('click', () => replay(s, () => review(null, subs)));
       const w = m.writing;
       const pastes = w ? w.pastesBlocked : m.exam?.pastesBlocked;
@@ -937,7 +1100,7 @@ async function review(initial = null, keep = null) {
         el('td', { class: pastes ? 'warn' : '', text: pastes == null ? '—' : String(pastes) }),
         el('td', { class: m.exam?.leaves ? 'warn' : '', text: m.exam ? `${m.exam.leaves} (${Math.round((m.exam.awaySeconds || 0) / 60)} min)` : '—' }),
         el('td', { class: s.intact ? 'ok' : 'warn', text: s.intact ? t('aula.rev.intact') : t('aula.rev.altered') }),
-        el('td', { class: 'acts' }, openBtn, playBtn, reBtn)));
+        el('td', { class: 'acts' }, openBtn, playBtn, cmpBtn, reBtn)));
     }
     tbl.append(tb);
     table.append(tbl, el('p', { class: 'hint', text: t('aula.rev.legend') }));
@@ -969,6 +1132,120 @@ async function review(initial = null, keep = null) {
   });
   if (initial) load(initial);
   else if (subs.length) { intro.textContent = t('aula.rev.loaded', { n: subs.length }); draw(); }
+}
+
+/* ---------------- docente: comparar con la solución ---------------- */
+
+// Diferencias por líneas (subsecuencia común más larga). Con loose, se ignoran sangrías y espacios de más.
+export function diffLines(a, b, loose = true) {
+  const A = a.split('\n'), B = b.split('\n');
+  const k = (s) => (loose ? s.replace(/\s+/g, ' ').trim() : s);
+  const ka = A.map(k), kb = B.map(k);
+  const n = A.length, m = B.length;
+  if (n * m > 9e6) return null;
+  const L = new Uint32Array((n + 1) * (m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
+    L[i * (m + 1) + j] = ka[i] === kb[j] ? L[(i + 1) * (m + 1) + j + 1] + 1 : Math.max(L[(i + 1) * (m + 1) + j], L[i * (m + 1) + j + 1]);
+  }
+  const ops = [];
+  let i = 0, j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && ka[i] === kb[j]) ops.push({ op: '=', a: i, b: j, l: A[i++], r: B[j++] });
+    else if (j < m && (i >= n || L[i * (m + 1) + j + 1] >= L[(i + 1) * (m + 1) + j])) ops.push({ op: '+', b: j, r: B[j++] });
+    else ops.push({ op: '-', a: i, l: A[i++] });
+  }
+  // Une un bloque de líneas quitadas con el de agregadas que le sigue: se muestran en la misma fila.
+  const rows = [];
+  for (let x = 0; x < ops.length;) {
+    if (ops[x].op === '=') { rows.push(ops[x++]); continue; }
+    const del = [], add = [];
+    while (x < ops.length && ops[x].op !== '=') (ops[x].op === '-' ? del : add).push(ops[x++]);
+    for (let y = 0; y < Math.max(del.length, add.length); y++) {
+      const d = del[y], p = add[y];
+      rows.push({ op: d && p ? '~' : d ? '-' : '+', a: d?.a, b: p?.b, l: d?.l, r: p?.r });
+    }
+  }
+  return rows;
+}
+
+// Marca la parte distinta de dos líneas parecidas (lo que queda entre el inicio y el final en común).
+function markedLine(text, other) {
+  if (other == null) return [document.createTextNode(text)];
+  let p = 0;
+  while (p < text.length && p < other.length && text[p] === other[p]) p++;
+  let s = 0;
+  while (s < text.length - p && s < other.length - p && text[text.length - 1 - s] === other[other.length - 1 - s]) s++;
+  const mid = text.slice(p, text.length - s);
+  return [document.createTextNode(text.slice(0, p)), mid ? el('mark', { text: mid }) : '', document.createTextNode(text.slice(text.length - s))];
+}
+
+async function solutionFor(ex) {
+  return (await loadMine()).find((x) => x.id === ex.id && x.solution)?.solution || null;
+}
+
+function compare(s, solution, back) {
+  const names = [...new Set([...s.files.map((f) => f.name), ...solution.files.map((f) => f.name)])];
+  let file = names.findIndex((n) => /\.html?$/i.test(n));
+  if (file < 0) file = 0;
+  let loose = true, onlyDiff = true;
+  const box = el('div', { class: 'modal wide aula-compare', role: 'dialog' }, el('h2', { text: t('aula.cmp.title', { name: s.meta.student }) }));
+  const tabs = el('div', { class: 'aula-rp-tabs' });
+  const summary = el('p', { class: 'aula-cmp-sum' });
+  const looseBox = el('input', { type: 'checkbox', checked: true });
+  const onlyBox = el('input', { type: 'checkbox', checked: true });
+  looseBox.addEventListener('change', () => { loose = looseBox.checked; draw(); });
+  onlyBox.addEventListener('change', () => { onlyDiff = onlyBox.checked; draw(); });
+  const opts = el('div', { class: 'row aula-cmp-opts' },
+    el('label', { class: 'aula-check inline' }, looseBox, el('span', { text: t('aula.cmp.loose') })),
+    el('label', { class: 'aula-check inline' }, onlyBox, el('span', { text: t('aula.cmp.only') })));
+  const wrap = el('div', { class: 'aula-cmp-wrap' });
+  const closeBtn = el('button', { type: 'button', class: 'btn primary', text: t('ui.close') });
+  box.append(tabs, opts, summary, wrap, el('p', { class: 'hint', text: t('aula.cmp.legend') }), el('div', { class: 'actions' }, closeBtn));
+
+  const draw = () => {
+    tabs.textContent = '';
+    names.forEach((n, i) => {
+      const b = el('button', { type: 'button', class: 'aula-rp-tab' + (i === file ? ' on' : ''), text: n });
+      b.addEventListener('click', () => { file = i; draw(); });
+      tabs.append(b);
+    });
+    const name = names[file];
+    const mine = s.files.find((f) => f.name === name);
+    const sol = solution.files.find((f) => f.name === name);
+    wrap.textContent = '';
+    if (!mine || !sol) { summary.textContent = t(mine ? 'aula.cmp.noSolutionFile' : 'aula.cmp.noStudentFile', { file: name }); return; }
+    const rows = diffLines(mine.text, sol.content, loose);
+    if (!rows) { summary.textContent = t('aula.cmp.tooBig'); return; }
+    const changed = rows.filter((r) => r.op !== '=').length;
+    summary.textContent = changed ? t('aula.cmp.sum', { n: changed }) : t('aula.cmp.same');
+    summary.className = 'aula-cmp-sum' + (changed ? '' : ' ok');
+    const tbl = el('table', { class: 'aula-cmp' },
+      el('colgroup', {}, el('col', { class: 'n' }), el('col'), el('col', { class: 'n' }), el('col')),
+      el('thead', {}, el('tr', {}, el('th', { colspan: '2', text: t('aula.cmp.student', { name: s.meta.student }) }), el('th', { colspan: '2', text: t('aula.cmp.solution') }))));
+    const tb = el('tbody');
+    const show = rows.map((r, i) => !onlyDiff || r.op !== '=' || rows.slice(Math.max(0, i - 2), i + 3).some((x) => x.op !== '='));
+    for (let i = 0; i < rows.length; i++) {
+      if (!show[i]) {
+        let j = i;
+        while (j < rows.length && !show[j]) j++;
+        tb.append(el('tr', { class: 'gap' }, el('td', { colspan: '4', text: t('aula.cmp.hidden', { n: j - i }) })));
+        i = j - 1;
+        continue;
+      }
+      const r = rows[i];
+      const cls = { '=': '', '-': 'del', '+': 'add', '~': 'chg' }[r.op];
+      tb.append(el('tr', { class: cls },
+        el('td', { class: 'n', text: r.a != null ? String(r.a + 1) : '' }),
+        el('td', { class: 'l' }, ...(r.l != null ? (r.op === '~' ? markedLine(r.l, r.r) : [r.l]) : [])),
+        el('td', { class: 'n', text: r.b != null ? String(r.b + 1) : '' }),
+        el('td', { class: 'r' }, ...(r.r != null ? (r.op === '~' ? markedLine(r.r, r.l) : [r.r]) : []))));
+    }
+    tbl.append(tb);
+    wrap.append(tbl);
+  };
+  draw();
+  const close = openModal(box);
+  closeBtn.addEventListener('click', () => { close(); back?.(); });
 }
 
 /* ---------------- docente: reproducir cómo se escribió ---------------- */
