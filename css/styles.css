@@ -911,6 +911,7 @@ table.res th, table.info-table th { background: var(--bg-3); font-weight: 600; }
 .aula-fmt-btn.swatch span { width: 16px; height: 16px; border-radius: 50%; display: block; box-shadow: 0 0 0 1px rgba(0,0,0,.25) inset; }
 .aula-fmt .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
 .aula-fmt .grow { flex: 1; }
+.aula-instr-preview[hidden] { display: none; }
 .aula-instr-preview { display: block; width: 100%; height: 260px; margin-top: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-2); }
 .aula-try-line { margin: 6px 0 0; min-height: 1.2em; }
 
