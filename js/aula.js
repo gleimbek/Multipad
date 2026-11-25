@@ -797,10 +797,12 @@ async function editor(existing = null) {
       for (const k of FIELDS[x.type]) {
         const input = el(k === 'code' ? 'textarea' : 'input', k === 'code' ? { rows: '2', spellcheck: 'false' } : { type: k === 'n' ? 'number' : 'text', min: '1', spellcheck: 'false', autocomplete: 'off' });
         input.value = x[k] ?? '';
-        const special = { style: { value: 'styleValue' }, attr: { value: 'attrValue' }, source: { value: 'sourceValue', n: 'sourceN' }, click: { selector: 'clickSelector' } }[x.type]?.[k];
-        input.placeholder = t('aula.ph.' + (special && special !== 'clickSelector' ? special : k));
+        // Algunos campos tienen su propio ejemplo (aula.ph.*) o su propia etiqueta (aula.f.*) según el tipo de prueba.
+        const ph = { style: { value: 'styleValue' }, attr: { value: 'attrValue' }, source: { value: 'sourceValue', n: 'sourceN' } }[x.type]?.[k] || k;
+        const lbl = { source: { value: 'sourceValue', n: 'sourceN' }, click: { selector: 'clickSelector' } }[x.type]?.[k] || k;
+        input.placeholder = t('aula.ph.' + ph);
         input.addEventListener('input', () => { x[k] = input.value; });
-        grid.append(field(t('aula.f.' + (special || k)), input));
+        grid.append(field(t('aula.f.' + lbl), input));
       }
       const label = el('input', { type: 'text', placeholder: t('aula.ph.label'), value: x.label || '' });
       label.addEventListener('input', () => { x.label = label.value; });
